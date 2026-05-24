@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { createClient } from './supabase';
+import { isSupabaseConfigured, createClient } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
 interface AuthCtx {
@@ -27,63 +27,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    const supabase = createClient();
-
-    supabase.auth.getUser().then(({ data: { user: u } }) => {
-      setUser(u);
-
-      if (u) {
-        // Logged in — if on login page, go to projects
-        if (pathname === '/login' || pathname === '/') {
-          router.replace('/projects');
-        }
-      } else if (!PUBLIC_ROUTES.includes(pathname)) {
-        // Not logged in — go to login
-        router.replace('/login');
-      }
-
+    // If Supabase isn't configured, skip auth entirely — just show pages
+    if (!isSupabaseConfigured) {
       setLoading(false);
-    });
+      return;
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        const u = session?.user ?? null;
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    const init = async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user: u } } = await supabase.auth.getUser();
         setUser(u);
 
-        if (event === 'SIGNED_IN' && u) {
-          router.replace('/projects');
-        }
-        if (event === 'SIGNED_OUT') {
+        if (u) {
+          if (pathname === '/login' || pathname === '/') {
+            router.replace('/projects');
+          }
+        } else if (!PUBLIC_ROUTES.includes(pathname)) {
           router.replace('/login');
         }
-      }
-    );
 
-    return () => subscription.unsubscribe();
-  }, []);
+        const { data } = supabase.auth.onAuthStateChange((event, session) => {
+          const currentUser = session?.user ?? null;
+          setUser(currentUser);
+          if (event === 'SIGNED_IN' && currentUser) router.replace('/projects');
+          if (event === 'SIGNED_OUT') router.replace('/login');
+        });
+        subscription = data.subscription;
+      } catch {
+        if (!PUBLIC_ROUTES.includes(pathname)) {
+          router.replace('/login');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+    return () => subscription?.unsubscribe();
+  }, [pathname, router]);
 
   const signOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    if (!isSupabaseConfigured) return;
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch { /* silent */ }
     setUser(null);
   };
 
-  if (loading) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: 'var(--bg-primary)' }}
-      >
-        <div className="pulse-soft" style={{ color: 'var(--text-muted)' }}>
-          Loading...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <AuthContext.Provider value={{ user, loading, signOut }}>
-      {children}
+      {loading ? (
+        <div
+          className="min-h-screen flex items-center justify-center"
+          style={{ background: 'var(--bg-primary)' }}
+        >
+          <div className="pulse-soft" style={{ color: 'var(--text-muted)' }}>
+            Loading...
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }
