@@ -102,18 +102,18 @@ export default function AssemblyPage() {
       mountRef.current.appendChild(renderer.domElement);
       rendererRef.current = renderer;
 
-      // Lighting
-      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0xfff5ee, 0.7);
+      // Lighting — lower ambient so model has depth, accent with terracotta fill
+      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0x332822, 0.4);
       scene.add(ambient);
-      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xffeedd, 1.3);
-      key.position.set(3, 5, 4);
+      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xfff0e0, 1.8);
+      key.position.set(4, 6, 5);
       key.castShadow = true;
       scene.add(key);
-      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xe05a2b, 0.4);
-      fill.position.set(-3, 2, -2);
+      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xe05a2b, 0.6);
+      fill.position.set(-4, 1, -3);
       scene.add(fill);
-      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0x8888ff, 0.2);
-      rim.position.set(0, -2, -4);
+      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0x6688aa, 0.3);
+      rim.position.set(0, -3, -5);
       scene.add(rim);
 
       // Load GLB
@@ -137,6 +137,24 @@ export default function AssemblyPage() {
           const scaledCenter = (center as { multiplyScalar: (s: number) => unknown }).multiplyScalar(scale);
           (model as { position: { sub: (v: unknown) => void } }).position.sub(scaledCenter);
           sphericalRef.current.radius = 2.8;
+
+          // Darken any white or near-white materials so they're visible on dark bg
+          (model as { traverse: (cb: (c: unknown) => void) => void }).traverse((child: unknown) => {
+            const c = child as { isMesh?: boolean; material?: { color?: { r: number; g: number; b: number; multiplyScalar: (s: number) => void }; metalness?: number; roughness?: number; needsUpdate?: boolean } };
+            if (c.isMesh && c.material && c.material.color) {
+              const col = c.material.color;
+              const brightness = col.r * 0.299 + col.g * 0.587 + col.b * 0.114;
+              // If material is very bright (white/light grey), darken it significantly
+              if (brightness > 0.7) {
+                col.multiplyScalar(0.25);
+              } else if (brightness > 0.4) {
+                col.multiplyScalar(0.5);
+              }
+              if (c.material.roughness !== undefined) c.material.roughness = Math.max(c.material.roughness, 0.4);
+              if (c.material.needsUpdate !== undefined) c.material.needsUpdate = true;
+            }
+          });
+
           scene.add(model);
           modelRef.current = model;
           setLoading(false);
