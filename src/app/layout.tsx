@@ -4,7 +4,7 @@ import { AuthProvider } from '@/lib/auth-provider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'FIRECTRL — Command Center',
+  title: 'FIRECTRL',
   description: 'AI-Driven Fire Detection & Suppression Platform',
 };
 
