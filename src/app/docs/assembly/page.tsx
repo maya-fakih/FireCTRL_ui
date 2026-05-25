@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import AppSidebar from '@/components/AppSidebar';
 import TopBar from '@/components/TopBar';
 import { RotateCcw, Play, Pause, Box } from 'lucide-react';
 
@@ -251,17 +250,15 @@ export default function AssemblyPage() {
   };
 
   return (
-    <div className="flex min-h-screen">
-      <AppSidebar />
-      <main className="flex-1 p-7" style={{ marginLeft: 220 }}>
-        <TopBar title="Robot Assembly" subtitle="Interactive 3D model — drag to rotate, scroll to zoom" />
+    <div>
+      <TopBar title="Robot Assembly" subtitle="Interactive 3D model — drag to rotate, scroll to zoom" />
 
-        {/* 3D Viewer */}
-        <div
-          className="card overflow-hidden mb-4"
-          style={{ height: 500, position: 'relative' }}
-        >
-          <div ref={mountRef} style={{ width: '100%', height: '100%', cursor: 'grab' }} />
+      {/* 3D Viewer */}
+      <div
+        className="card overflow-hidden mb-4"
+        style={{ height: 500, position: 'relative' }}
+      >
+        <div ref={mountRef} style={{ width: '100%', height: '100%', cursor: 'grab' }} />
 
           {loading && !error && (
             <div
@@ -356,7 +353,6 @@ export default function AssemblyPage() {
             </div>
           ))}
         </div>
-      </main>
     </div>
   );
 }
