@@ -4,12 +4,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-provider';
-import { Flame, Folder, Book, User, LogOut, Wrench } from 'lucide-react';
+import { Flame, Folder, Book, User, LogOut } from 'lucide-react';
 
 const NAV = [
   { href: '/projects', label: 'Projects', icon: Folder },
   { href: '/docs',     label: 'Docs',     icon: Book },
-  { href: '/docs/assembly', label: 'Assembly', icon: Wrench },
   { href: '/account',  label: 'Account',  icon: User },
 ];
 

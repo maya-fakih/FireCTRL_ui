@@ -3,7 +3,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import AppSidebar from '@/components/AppSidebar';
 import TopBar from '@/components/TopBar';
 import { Terminal, Cpu, Wifi, Copy, Check, ArrowRight, Book } from 'lucide-react';
 
@@ -45,16 +44,14 @@ function CmdBlock({ cmd, label }: { cmd: string; label?: string }) {
 
 export default function DocsPage() {
   return (
-    <div className="flex min-h-screen">
-      <AppSidebar />
-      <main className="flex-1 p-7" style={{ marginLeft: 220 }}>
-        <TopBar title="Docs" subtitle="How to set up a fire detection unit">
-          <Link href="/projects/setup" className="btn btn-primary">
-            Guided setup <ArrowRight size={14} />
-          </Link>
-        </TopBar>
+    <div>
+      <TopBar title="Docs" subtitle="How to set up a fire detection unit">
+        <Link href="/projects/setup" className="btn btn-primary">
+          Guided setup <ArrowRight size={14} />
+        </Link>
+      </TopBar>
 
-        <div className="max-w-2xl flex flex-col gap-4">
+      <div className="max-w-2xl flex flex-col gap-4">
           {/* Intro */}
           <div className="card p-7 animate-in">
             <div className="flex items-center gap-3 mb-4">
@@ -139,7 +136,6 @@ export default function DocsPage() {
             </div>
           </div>
         </div>
-      </main>
     </div>
   );
 }
