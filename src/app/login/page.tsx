@@ -65,7 +65,7 @@ export default function LoginPage() {
             className="text-2xl font-bold tracking-tight"
             style={{ color: 'var(--text-primary)' }}
           >
-            Fire<span style={{ color: 'var(--accent)' }}>CTRL</span>
+            FIRE<span style={{ color: 'var(--accent)' }}>CTRL</span>
           </div>
           <div
             className="text-[10px] uppercase tracking-[0.15em] mt-1"

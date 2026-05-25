@@ -6,7 +6,7 @@ import TopBar from '@/components/TopBar';
 import { getState, setMode } from '@/lib/api';
 import type { SystemState, SystemMode } from '@/lib/types';
 import {
-  Activity, Radio, Camera, AlertTriangle,
+  Camera, AlertTriangle,
   Eye, Users, Shield, Brain,
   Radio as RadioIcon, Cpu, Database,
 } from 'lucide-react';
@@ -45,6 +45,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchState();
     const i = setInterval(fetchState, 2000);
     return () => clearInterval(i);
