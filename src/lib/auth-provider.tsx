@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthCtx>({
   signOut: async () => {},
 });
 
-const PUBLIC_ROUTES = ['/login'];
+const PUBLIC_ROUTES = ['/', '/login'];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
