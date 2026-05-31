@@ -1,17 +1,335 @@
 'use client';
 
-/**
- * AnywhereSection — bridges the hero into the story. The premise: "the
- * box is the same. The body changes." Each card is a different host
- * (drone / wall / kitchen / rover) so the next section's narrative has
- * already been seeded.
- *
- * I'm using SVG illustrations rather than 3D here — the section needs
- * to scroll past quickly. 3D is reserved for the storytelling beats.
- */
-
 import { motion } from 'framer-motion';
 import { Bone, Cpu, Flame, Wifi } from 'lucide-react';
+
+// ─── Illustrations ────────────────────────────────────────────────────────────
+// Each is a self-contained SVG with CSS animations baked in.
+// No external deps, no 3D, no GLB.
+
+const DroneIllustration = () => (
+  <svg viewBox="0 0 220 160" className="w-full h-full" aria-hidden>
+    <defs>
+      <radialGradient id="drone-glow" cx="50%" cy="60%" r="50%">
+        <stop offset="0%" stopColor="#E05A2B" stopOpacity="0.3" />
+        <stop offset="100%" stopColor="#E05A2B" stopOpacity="0" />
+      </radialGradient>
+      <filter id="drone-blur">
+        <feGaussianBlur stdDeviation="2" />
+      </filter>
+    </defs>
+
+    {/* ambient glow underneath */}
+    <ellipse cx="110" cy="130" rx="70" ry="18" fill="url(#drone-glow)" />
+
+    {/* altitude dashes */}
+    {[0,1,2,3].map(i => (
+      <line key={i}
+        x1={110} y1={138 - i * 10} x2={110} y2={133 - i * 10}
+        stroke="#E05A2B" strokeWidth="1.5" opacity={0.6 - i * 0.15}
+        strokeLinecap="round"
+      />
+    ))}
+
+    {/* arm struts — X pattern */}
+    <line x1="90" y1="72" x2="44" y2="44"  stroke="#6B6560" strokeWidth="2.5" strokeLinecap="round" />
+    <line x1="130" y1="72" x2="176" y2="44" stroke="#6B6560" strokeWidth="2.5" strokeLinecap="round" />
+    <line x1="90" y1="88" x2="44" y2="116"  stroke="#6B6560" strokeWidth="2.5" strokeLinecap="round" />
+    <line x1="130" y1="88" x2="176" y2="116" stroke="#6B6560" strokeWidth="2.5" strokeLinecap="round" />
+
+    {/* motor housings */}
+    {[[44,44],[176,44],[44,116],[176,116]].map(([cx,cy],i) => (
+      <circle key={i} cx={cx} cy={cy} r="9" fill="#1C1816" stroke="#443D39" strokeWidth="1.5" />
+    ))}
+
+    {/* spinning rotors — CSS animation */}
+    <style>{`
+      @keyframes spin-r { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      .r1 { transform-origin: 44px 44px; animation: spin-r 0.35s linear infinite; }
+      .r2 { transform-origin: 176px 44px; animation: spin-r 0.35s linear infinite reverse; }
+      .r3 { transform-origin: 44px 116px; animation: spin-r 0.35s linear infinite reverse; }
+      .r4 { transform-origin: 176px 116px; animation: spin-r 0.35s linear infinite; }
+      @keyframes drone-hover { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+      .drone-body { animation: drone-hover 3s ease-in-out infinite; }
+    `}</style>
+
+    <g className="r1"><line x1="26" y1="44" x2="62" y2="44" stroke="#EDE8E2" strokeWidth="2" strokeLinecap="round" opacity="0.7" /></g>
+    <g className="r2"><line x1="158" y1="44" x2="194" y2="44" stroke="#EDE8E2" strokeWidth="2" strokeLinecap="round" opacity="0.7" /></g>
+    <g className="r3"><line x1="26" y1="116" x2="62" y2="116" stroke="#EDE8E2" strokeWidth="2" strokeLinecap="round" opacity="0.7" /></g>
+    <g className="r4"><line x1="158" y1="116" x2="194" y2="116" stroke="#EDE8E2" strokeWidth="2" strokeLinecap="round" opacity="0.7" /></g>
+
+    {/* body — hovering */}
+    <g className="drone-body">
+      {/* main chassis */}
+      <rect x="82" y="62" width="56" height="36" rx="8" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+      {/* camera gimbal */}
+      <circle cx="110" cy="98" r="7" fill="#1C1816" stroke="#443D39" strokeWidth="1" />
+      <circle cx="110" cy="98" r="3.5" fill="#2A2020" stroke="#E05A2B" strokeWidth="0.8" />
+      {/* FIRECTRL module */}
+      <rect x="91" y="69" width="38" height="16" rx="3" fill="#1C1816" stroke="#E05A2B" strokeWidth="0.8" />
+      {/* status LED */}
+      <circle cx="120" cy="77" r="2.5" fill="#E05A2B">
+        <animate attributeName="opacity" values="1;0.2;1" dur="1.2s" repeatCount="indefinite" />
+      </circle>
+      {/* label */}
+      <text x="97" y="81" fontSize="5" fill="#A59E97" fontFamily="monospace" letterSpacing="0.5">FIRECTRL</text>
+    </g>
+  </svg>
+);
+
+const WallMountIllustration = () => (
+  <svg viewBox="0 0 220 160" className="w-full h-full" aria-hidden>
+    <defs>
+      <radialGradient id="wall-scan" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stopColor="#B8860B" stopOpacity="0.2" />
+        <stop offset="100%" stopColor="#B8860B" stopOpacity="0" />
+      </radialGradient>
+      <clipPath id="wall-clip">
+        <rect x="0" y="0" width="220" height="160" />
+      </clipPath>
+    </defs>
+    <style>{`
+      @keyframes sweep {
+        0%   { transform: rotate(-40deg); opacity: 0.7; }
+        50%  { transform: rotate(40deg);  opacity: 0.9; }
+        100% { transform: rotate(-40deg); opacity: 0.7; }
+      }
+      @keyframes ping {
+        0%,100% { r: 12; opacity: 0.8; }
+        50%     { r: 32; opacity: 0; }
+      }
+      .scan-arm { transform-origin: 110px 72px; animation: sweep 3s ease-in-out infinite; }
+      .scan-ping { animation: ping 2s ease-out infinite; }
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+    `}</style>
+
+    {/* wall surface — subtle brick-like texture */}
+    {[0,1,2,3,4,5,6].map(i => (
+      <line key={i} x1="30" y1={20 + i*20} x2="190" y2={20 + i*20}
+        stroke="#2A2420" strokeWidth="1" opacity="0.6" />
+    ))}
+    {[0,1,2,3,4].map(i => (
+      <line key={i} x1={50 + i*36} y1="20" x2={50 + i*36} y2="140"
+        stroke="#2A2420" strokeWidth="0.5" opacity="0.3" />
+    ))}
+
+    {/* scan field */}
+    <ellipse cx="110" cy="72" rx="70" ry="55" fill="url(#wall-scan)" clipPath="url(#wall-clip)" />
+
+    {/* scan sweep beam */}
+    <g className="scan-arm" clipPath="url(#wall-clip)">
+      <line x1="110" y1="72" x2="110" y2="20" stroke="#B8860B" strokeWidth="1.5" opacity="0.6" strokeLinecap="round" />
+      <line x1="110" y1="72" x2="165" y2="30" stroke="#B8860B" strokeWidth="0.8" opacity="0.3" strokeLinecap="round" />
+    </g>
+
+    {/* ping rings */}
+    <circle cx="110" cy="72" r="12" fill="none" stroke="#B8860B" strokeWidth="1" className="scan-ping" />
+    <circle cx="110" cy="72" r="12" fill="none" stroke="#B8860B" strokeWidth="0.6" style={{animation:'ping 2s ease-out infinite 0.6s'}} />
+
+    {/* mount bracket */}
+    <rect x="96" y="8" width="28" height="14" rx="3" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+    <rect x="108" y="22" width="4" height="12" fill="#443D39" />
+
+    {/* device body */}
+    <rect x="82" y="54" width="56" height="42" rx="6" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+    {/* lens */}
+    <circle cx="110" cy="72" r="12" fill="#1C1816" stroke="#443D39" strokeWidth="1.5" />
+    <circle cx="110" cy="72" r="7" fill="#161210" stroke="#B8860B" strokeWidth="0.8" />
+    <circle cx="106" cy="68" r="2" fill="#443D39" opacity="0.6" />
+    {/* status strip */}
+    <rect x="88" y="88" width="44" height="4" rx="2" fill="#1C1816" />
+    <rect x="88" y="88" width="20" height="4" rx="2" fill="#E05A2B">
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.8s" repeatCount="indefinite" />
+    </rect>
+    {/* label */}
+    <text x="89" y="81" fontSize="4.5" fill="#A59E97" fontFamily="monospace">FIRECTRL·WALL</text>
+  </svg>
+);
+
+const RoverIllustration = () => (
+  <svg viewBox="0 0 220 160" className="w-full h-full" aria-hidden>
+    <defs>
+      <linearGradient id="rover-ground" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stopColor="#3A7D5C" stopOpacity="0.25" />
+        <stop offset="100%" stopColor="#3A7D5C" stopOpacity="0" />
+      </linearGradient>
+    </defs>
+    <style>{`
+      @keyframes roll { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      @keyframes rover-move { 0%,100%{transform:translateX(0)} 50%{transform:translateX(6px)} }
+      .wheel-fl { transform-origin: 56px 118px; animation: roll 1.4s linear infinite; }
+      .wheel-ml { transform-origin: 110px 122px; animation: roll 1.4s linear infinite; }
+      .wheel-rl { transform-origin: 164px 118px; animation: roll 1.4s linear infinite; }
+      .rover-chassis { animation: rover-move 3s ease-in-out infinite; }
+      @keyframes mast-ping { 0%,100%{opacity:1;r:3} 50%{opacity:0.1;r:8} }
+    `}</style>
+
+    {/* terrain */}
+    <path d="M10 140 Q40 132 70 138 Q100 144 130 136 Q160 128 190 134 L210 140 L10 140 Z"
+      fill="url(#rover-ground)" />
+    <path d="M10 138 Q55 128 100 136 Q145 128 210 134"
+      stroke="#3A7D5C" strokeWidth="1" fill="none" opacity="0.5" />
+
+    {/* tread marks */}
+    {[0,1,2,3,4,5].map(i => (
+      <line key={i} x1={30 + i*28} y1="140" x2={36 + i*28} y2="140"
+        stroke="#3A7D5C" strokeWidth="1.5" opacity="0.4" strokeLinecap="round" />
+    ))}
+
+    <g className="rover-chassis">
+      {/* main body */}
+      <rect x="48" y="72" width="124" height="42" rx="7" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+      {/* upper deck */}
+      <rect x="62" y="54" width="96" height="22" rx="5" fill="#1C1816" stroke="#443D39" strokeWidth="1" />
+      {/* FIRECTRL box */}
+      <rect x="78" y="44" width="44" height="14" rx="3" fill="#272220" stroke="#E05A2B" strokeWidth="0.8" />
+      <text x="82" y="54" fontSize="4.5" fill="#A59E97" fontFamily="monospace">FIRECTRL</text>
+
+      {/* mast */}
+      <line x1="148" y1="54" x2="148" y2="28" stroke="#A59E97" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="148" cy="26" r="5" fill="#272220" stroke="#443D39" strokeWidth="1" />
+      {/* mast sensor ping */}
+      <circle cx="148" cy="26" r="3" fill="#E05A2B">
+        <animate attributeName="r" values="3;9;3" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="1;0;1" dur="2s" repeatCount="indefinite" />
+      </circle>
+      <circle cx="148" cy="26" r="3" fill="#E05A2B" />
+
+      {/* solar panel */}
+      <rect x="62" y="57" width="36" height="16" rx="2" fill="#1A2030" stroke="#443D39" strokeWidth="1" />
+      {[0,1,2].map(i => (
+        <line key={i} x1={68 + i*10} y1="57" x2={68 + i*10} y2="73"
+          stroke="#2A3848" strokeWidth="1" />
+      ))}
+
+      {/* camera eye */}
+      <circle cx="172" cy="90" r="9" fill="#1C1816" stroke="#443D39" strokeWidth="1.5" />
+      <circle cx="172" cy="90" r="5" fill="#161210" stroke="#3A7D5C" strokeWidth="0.8" />
+
+      {/* suspension arms */}
+      <line x1="56" y1="100" x2="56" y2="116" stroke="#6B6560" strokeWidth="3" strokeLinecap="round" />
+      <line x1="110" y1="114" x2="110" y2="122" stroke="#6B6560" strokeWidth="3" strokeLinecap="round" />
+      <line x1="164" y1="100" x2="164" y2="116" stroke="#6B6560" strokeWidth="3" strokeLinecap="round" />
+    </g>
+
+    {/* wheels */}
+    <g className="wheel-fl">
+      <circle cx="56" cy="118" r="16" fill="#1C1816" stroke="#6B6560" strokeWidth="2" />
+      <circle cx="56" cy="118" r="8" fill="#272220" />
+      <line x1="56" y1="102" x2="56" y2="134" stroke="#443D39" strokeWidth="1.5" />
+      <line x1="40" y1="118" x2="72" y2="118" stroke="#443D39" strokeWidth="1.5" />
+    </g>
+    <g className="wheel-ml">
+      <circle cx="110" cy="122" r="14" fill="#1C1816" stroke="#6B6560" strokeWidth="2" />
+      <circle cx="110" cy="122" r="7" fill="#272220" />
+      <line x1="110" y1="108" x2="110" y2="136" stroke="#443D39" strokeWidth="1.5" />
+      <line x1="96" y1="122" x2="124" y2="122" stroke="#443D39" strokeWidth="1.5" />
+    </g>
+    <g className="wheel-rl">
+      <circle cx="164" cy="118" r="16" fill="#1C1816" stroke="#6B6560" strokeWidth="2" />
+      <circle cx="164" cy="118" r="8" fill="#272220" />
+      <line x1="164" y1="102" x2="164" y2="134" stroke="#443D39" strokeWidth="1.5" />
+      <line x1="148" y1="118" x2="180" y2="118" stroke="#443D39" strokeWidth="1.5" />
+    </g>
+  </svg>
+);
+
+const WorkbenchIllustration = () => (
+  <svg viewBox="0 0 220 160" className="w-full h-full" aria-hidden>
+    <defs>
+      <linearGradient id="bench-glow" x1="0" x2="1" y1="1" y2="0">
+        <stop offset="0%" stopColor="#6B7DB3" stopOpacity="0.3" />
+        <stop offset="100%" stopColor="#6B7DB3" stopOpacity="0" />
+      </linearGradient>
+    </defs>
+    <style>{`
+      @keyframes arm1 {
+        0%,100% { transform: rotate(0deg); }
+        40%     { transform: rotate(18deg); }
+        60%     { transform: rotate(18deg); }
+      }
+      @keyframes arm2 {
+        0%,100% { transform: rotate(0deg); }
+        40%     { transform: rotate(-22deg); }
+        60%     { transform: rotate(-22deg); }
+      }
+      @keyframes data-pulse { 0%,100%{opacity:0.2} 50%{opacity:1} }
+      .seg1 { transform-origin: 72px 120px; animation: arm1 4s ease-in-out infinite; }
+      .seg2 { transform-origin: 72px 72px; animation: arm2 4s ease-in-out infinite 0.1s; }
+    `}</style>
+
+    {/* bench surface */}
+    <rect x="20" y="118" width="180" height="6" rx="3" fill="#272220" stroke="#443D39" strokeWidth="1" />
+    <rect x="20" y="124" width="180" height="20" rx="2" fill="#1C1816" />
+
+    {/* grid on bench */}
+    {[0,1,2,3,4,5,6].map(i => (
+      <line key={`h${i}`} x1="20" y1={130 + i*2} x2="200" y2={130 + i*2}
+        stroke="#2A2420" strokeWidth="0.5" />
+    ))}
+
+    {/* bench glow */}
+    <rect x="20" y="60" width="180" height="60" fill="url(#bench-glow)" />
+
+    {/* data flow lines on desk */}
+    {[0,1,2,3].map(i => (
+      <line key={i} x1={40 + i*36} y1="118" x2={40 + i*36} y2="96"
+        stroke="#6B7DB3" strokeWidth="0.8" opacity="0.3" strokeDasharray="2 3">
+        <animate attributeName="opacity" values="0.1;0.5;0.1" dur={`${1.5+i*0.3}s`} repeatCount="indefinite" />
+      </line>
+    ))}
+
+    {/* arm base */}
+    <circle cx="72" cy="120" r="10" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+    <circle cx="72" cy="120" r="5" fill="#1C1816" stroke="#6B7DB3" strokeWidth="0.8" />
+
+    {/* arm segment 1 */}
+    <g className="seg1">
+      <rect x="68" y="48" width="8" height="74" rx="4" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+      <circle cx="72" cy="72" r="7" fill="#1C1816" stroke="#443D39" strokeWidth="1.5" />
+      {/* joint indicator */}
+      <circle cx="72" cy="72" r="3" fill="#6B7DB3" opacity="0.8">
+        <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2s" repeatCount="indefinite" />
+      </circle>
+
+      {/* arm segment 2 */}
+      <g className="seg2">
+        <rect x="68" y="24" width="8" height="50" rx="4" fill="#272220" stroke="#443D39" strokeWidth="1.5" />
+        <circle cx="72" cy="48" r="6" fill="#1C1816" stroke="#443D39" strokeWidth="1.5" />
+        <circle cx="72" cy="48" r="2.5" fill="#6B7DB3" opacity="0.7">
+          <animate attributeName="opacity" values="0.7;0.2;0.7" dur="2s" repeatCount="indefinite" />
+        </circle>
+
+        {/* end effector — FIRECTRL module */}
+        <rect x="56" y="14" width="32" height="22" rx="4" fill="#272220" stroke="#E05A2B" strokeWidth="1" />
+        <circle cx="72" cy="25" r="5" fill="#1C1816" stroke="#E05A2B" strokeWidth="0.8" />
+        <circle cx="72" cy="25" r="2.5" fill="#E05A2B">
+          <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite" />
+        </circle>
+        <text x="60" y="33" fontSize="4" fill="#A59E97" fontFamily="monospace">MODULE</text>
+      </g>
+    </g>
+
+    {/* laptop / monitor on bench */}
+    <rect x="120" y="78" width="72" height="44" rx="4" fill="#1C1816" stroke="#443D39" strokeWidth="1.5" />
+    <rect x="124" y="82" width="64" height="36" rx="2" fill="#161210" />
+    {/* screen content — training data viz */}
+    {[0,1,2,3,4].map(i => (
+      <rect key={i} x={127 + i*12} y={100 - i*5} width="8" height={10 + i*5}
+        rx="1" fill="#6B7DB3" opacity="0.6">
+        <animate attributeName="height" values={`${10+i*5};${14+i*5};${10+i*5}`}
+          dur={`${0.8+i*0.2}s`} repeatCount="indefinite" />
+        <animate attributeName="y" values={`${100-i*5};${96-i*5};${100-i*5}`}
+          dur={`${0.8+i*0.2}s`} repeatCount="indefinite" />
+      </rect>
+    ))}
+    <text x="127" y="91" fontSize="4" fill="#6B7DB3" fontFamily="monospace" opacity="0.8">TRAINING</text>
+    {/* screen reflection */}
+    <rect x="124" y="82" width="64" height="36" rx="2" fill="white" opacity="0.02" />
+  </svg>
+);
+
+// ─── Section data ─────────────────────────────────────────────────────────────
 
 const CONTEXTS = [
   {
@@ -19,140 +337,39 @@ const CONTEXTS = [
     title: 'A drone',
     body: 'Hovering above an incident. Real-time vision, thermals, autonomous suppression bursts.',
     accent: '#E05A2B',
-    illustration: (
-      <svg viewBox="0 0 200 140" className="w-full h-full">
-        <defs>
-          <linearGradient id="dr1" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#E05A2B" stopOpacity="0.35" />
-            <stop offset="1" stopColor="#E05A2B" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <circle cx="100" cy="110" r="45" fill="url(#dr1)" />
-        {/* drone arms */}
-        <line x1="60"  y1="60" x2="40"  y2="40" stroke="#A59E97" strokeWidth="2" />
-        <line x1="140" y1="60" x2="160" y2="40" stroke="#A59E97" strokeWidth="2" />
-        <line x1="60"  y1="80" x2="40"  y2="100" stroke="#A59E97" strokeWidth="2" />
-        <line x1="140" y1="80" x2="160" y2="100" stroke="#A59E97" strokeWidth="2" />
-        {/* rotors */}
-        <ellipse cx="40"  cy="40"  rx="18" ry="3" fill="#EDE8E2" opacity="0.6">
-          <animate attributeName="rx" values="18;3;18" dur="0.4s" repeatCount="indefinite" />
-        </ellipse>
-        <ellipse cx="160" cy="40"  rx="18" ry="3" fill="#EDE8E2" opacity="0.6">
-          <animate attributeName="rx" values="18;3;18" dur="0.4s" repeatCount="indefinite" />
-        </ellipse>
-        <ellipse cx="40"  cy="100" rx="18" ry="3" fill="#EDE8E2" opacity="0.6">
-          <animate attributeName="rx" values="18;3;18" dur="0.4s" repeatCount="indefinite" />
-        </ellipse>
-        <ellipse cx="160" cy="100" rx="18" ry="3" fill="#EDE8E2" opacity="0.6">
-          <animate attributeName="rx" values="18;3;18" dur="0.4s" repeatCount="indefinite" />
-        </ellipse>
-        {/* body */}
-        <rect x="80" y="60" width="40" height="22" rx="4" fill="#272220" stroke="#443D39" />
-        {/* FIRECTRL box */}
-        <rect x="88" y="82" width="24" height="10" rx="2" fill="#E05A2B" />
-        <circle cx="100" cy="87" r="1.5" fill="#fff" />
-      </svg>
-    ),
+    illustration: <DroneIllustration />,
   },
   {
     tag: 'FIXED',
     title: 'A wall mount',
     body: 'In a kitchen, a server room, a factory floor. Always-on watch with local logging.',
     accent: '#B8860B',
-    illustration: (
-      <svg viewBox="0 0 200 140" className="w-full h-full">
-        <defs>
-          <linearGradient id="w1" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#B8860B" stopOpacity="0.25" />
-            <stop offset="1" stopColor="#B8860B" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <rect x="20" y="20" width="160" height="100" rx="4" fill="url(#w1)" />
-        {/* wall pattern */}
-        <line x1="20" y1="50" x2="180" y2="50" stroke="#3A3430" strokeDasharray="2 4" />
-        <line x1="20" y1="90" x2="180" y2="90" stroke="#3A3430" strokeDasharray="2 4" />
-        {/* mounted box */}
-        <rect x="80" y="55" width="40" height="30" rx="3" fill="#272220" stroke="#443D39" />
-        <circle cx="100" cy="70" r="6" fill="none" stroke="#E05A2B" strokeWidth="1.5" />
-        <circle cx="100" cy="70" r="2" fill="#E05A2B">
-          <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
-        </circle>
-        {/* sensor sweep */}
-        <path d="M 100 70 L 60 100" stroke="#E05A2B" strokeWidth="1" opacity="0.4">
-          <animateTransform attributeName="transform" type="rotate" from="-30 100 70" to="30 100 70" dur="3s" repeatCount="indefinite" />
-        </path>
-      </svg>
-    ),
+    illustration: <WallMountIllustration />,
   },
   {
     tag: 'MOBILE',
     title: 'A rover',
     body: 'Exploring debris, post-incident sites, places too dangerous for a person. Mapping as it goes.',
     accent: '#3A7D5C',
-    illustration: (
-      <svg viewBox="0 0 200 140" className="w-full h-full">
-        <defs>
-          <linearGradient id="r1" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#3A7D5C" stopOpacity="0.3" />
-            <stop offset="1" stopColor="#3A7D5C" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <ellipse cx="100" cy="115" rx="60" ry="6" fill="url(#r1)" />
-        {/* rover body */}
-        <rect x="50" y="65" width="100" height="35" rx="5" fill="#272220" stroke="#443D39" />
-        <rect x="65" y="50" width="70" height="20" rx="3" fill="#322C29" stroke="#443D39" />
-        {/* FIRECTRL box on top */}
-        <rect x="85" y="42" width="30" height="10" rx="2" fill="#E05A2B" />
-        {/* wheels */}
-        <circle cx="65"  cy="105" r="8" fill="#1C1816" stroke="#A59E97" />
-        <circle cx="100" cy="105" r="8" fill="#1C1816" stroke="#A59E97" />
-        <circle cx="135" cy="105" r="8" fill="#1C1816" stroke="#A59E97" />
-        {/* terrain line */}
-        <path d="M 10 130 Q 50 122 100 128 T 190 124" stroke="#3A3430" fill="none" />
-      </svg>
-    ),
+    illustration: <RoverIllustration />,
   },
   {
     tag: 'WORKBENCH',
     title: 'Your own robot',
     body: 'R&D platform. Hook in your sensors, train models on your data, deploy in a single click.',
     accent: '#6B7DB3',
-    illustration: (
-      <svg viewBox="0 0 200 140" className="w-full h-full">
-        <defs>
-          <linearGradient id="b1" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#6B7DB3" stopOpacity="0.3" />
-            <stop offset="1" stopColor="#6B7DB3" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <rect x="20" y="100" width="160" height="6" fill="url(#b1)" />
-        <line x1="20" y1="103" x2="180" y2="103" stroke="#443D39" />
-        {/* arm — segmented */}
-        <line x1="60" y1="103" x2="60" y2="70" stroke="#A59E97" strokeWidth="3" />
-        <line x1="60" y1="70" x2="100" y2="50" stroke="#A59E97" strokeWidth="3" />
-        <line x1="100" y1="50" x2="140" y2="65" stroke="#A59E97" strokeWidth="3" />
-        <circle cx="60"  cy="70" r="4" fill="#272220" stroke="#443D39" />
-        <circle cx="100" cy="50" r="4" fill="#272220" stroke="#443D39" />
-        <rect x="135" y="58" width="14" height="14" rx="2" fill="#E05A2B" />
-        <circle cx="60" cy="103" r="6" fill="#272220" stroke="#443D39" />
-        {/* training grid */}
-        <g opacity="0.4">
-          <line x1="20"  y1="120" x2="180" y2="120" stroke="#443D39" strokeDasharray="1 3" />
-          <line x1="40"  y1="100" x2="40"  y2="130" stroke="#443D39" strokeDasharray="1 3" />
-          <line x1="80"  y1="100" x2="80"  y2="130" stroke="#443D39" strokeDasharray="1 3" />
-          <line x1="120" y1="100" x2="120" y2="130" stroke="#443D39" strokeDasharray="1 3" />
-          <line x1="160" y1="100" x2="160" y2="130" stroke="#443D39" strokeDasharray="1 3" />
-        </g>
-      </svg>
-    ),
+    illustration: <WorkbenchIllustration />,
   },
 ];
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AnywhereSection() {
   return (
     <section id="anywhere" className="stage py-28 lg:py-36 px-5 sm:px-8 lg:px-16">
       <div className="max-w-7xl mx-auto">
-        {/* Section header */}
+
+        {/* header */}
         <motion.div
           initial={{ opacity: 0, y: 30, filter: 'blur(12px)' }}
           whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
@@ -166,13 +383,11 @@ export default function AnywhereSection() {
               01 · The plug-and-play premise
             </span>
           </div>
-
           <h2 className="text-4xl sm:text-5xl lg:text-6xl leading-[1.05] tracking-tight" style={{ letterSpacing: '-0.035em' }}>
             One box.
             <br />
             <span className="font-display" style={{ color: 'var(--accent)' }}>Infinite</span> hosts.
           </h2>
-
           <p className="mt-6 text-base sm:text-lg max-w-xl" style={{ color: 'var(--text-secondary)' }}>
             FIRECTRL is a hardware-agnostic safety stack. The Raspberry Pi
             inside doesn&apos;t care what it&apos;s bolted to — it just runs the
@@ -180,7 +395,7 @@ export default function AnywhereSection() {
           </p>
         </motion.div>
 
-        {/* Cards grid */}
+        {/* cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
           {CONTEXTS.map((c, i) => (
             <motion.div
@@ -192,32 +407,24 @@ export default function AnywhereSection() {
               className="card group relative overflow-hidden p-6 cursor-default"
               style={{ minHeight: 340 }}
             >
-              {/* Illustration backdrop */}
-              <div className="absolute inset-0 opacity-90 group-hover:opacity-100 group-hover:scale-[1.04] transition-all duration-700">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-full h-[55%] mt-auto">{c.illustration}</div>
+              {/* illustration backdrop */}
+              <div className="absolute inset-0 opacity-90 group-hover:opacity-100 group-hover:scale-[1.03] transition-all duration-700">
+                <div className="absolute inset-0 flex items-end justify-center pb-2">
+                  <div className="w-full h-[62%]">{c.illustration}</div>
                 </div>
               </div>
 
-              {/* Gradient fade so text stays readable */}
+              {/* gradient fade so text stays readable */}
               <div
                 className="absolute inset-0 pointer-events-none"
-                style={{
-                  background:
-                    'linear-gradient(to top, var(--bg-card) 30%, transparent 80%)',
-                }}
+                style={{ background: 'linear-gradient(to top, var(--bg-card) 32%, transparent 75%)' }}
               />
 
-              {/* Text */}
+              {/* text */}
               <div className="relative z-10 flex flex-col h-full">
                 <div className="flex items-center gap-2 mb-3">
-                  <span
-                    className="w-1 h-1 rounded-full"
-                    style={{ background: c.accent }}
-                  />
-                  <span className="font-mono-tag" style={{ color: c.accent }}>
-                    {c.tag}
-                  </span>
+                  <span className="w-1 h-1 rounded-full" style={{ background: c.accent }} />
+                  <span className="font-mono-tag" style={{ color: c.accent }}>{c.tag}</span>
                 </div>
                 <h3 className="text-2xl font-medium tracking-tight mt-auto" style={{ letterSpacing: '-0.02em' }}>
                   {c.title}
@@ -230,13 +437,13 @@ export default function AnywhereSection() {
           ))}
         </div>
 
-        {/* Marquee strip of "ANYWHERE" — visual punctuation */}
+        {/* marquee */}
         <div className="mt-20 lg:mt-28 overflow-hidden no-scrollbar" style={{ maskImage: 'linear-gradient(to right, transparent, black 10%, black 90%, transparent)', WebkitMaskImage: 'linear-gradient(to right, transparent, black 10%, black 90%, transparent)' }}>
           <div className="marquee-track">
             {[...Array(2)].map((_, k) => (
               <div key={k} className="flex items-center gap-12 pr-12">
-                {['ANYWHERE', 'ANY ROBOT', 'ANY DEPLOYMENT', 'ANY SCALE', 'ANYWHERE', 'ANY ROBOT', 'ANY DEPLOYMENT', 'ANY SCALE'].map((w, i) => (
-                  <span key={`${k}-${i}`} className="flex items-center gap-12">
+                {['ANYWHERE', 'ANY ROBOT', 'ANY DEPLOYMENT', 'ANY SCALE', 'ANYWHERE', 'ANY ROBOT', 'ANY DEPLOYMENT', 'ANY SCALE'].map((w, j) => (
+                  <span key={`${k}-${j}`} className="flex items-center gap-12">
                     <span className="font-display text-5xl lg:text-6xl" style={{ color: 'var(--text-secondary)' }}>{w}</span>
                     <Wifi size={18} style={{ color: 'var(--accent)' }} />
                   </span>
@@ -246,12 +453,12 @@ export default function AnywhereSection() {
           </div>
         </div>
 
-        {/* Stat row — supporting the premise */}
+        {/* stat row */}
         <div className="mt-20 grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-8">
           {[
-            { icon: Cpu,   k: 'Local-first',  v: 'Everything runs on the Pi. The cloud never touches your data.' },
+            { icon: Cpu,   k: 'Local-first',       v: 'Everything runs on the Pi. The cloud never touches your data.' },
             { icon: Bone,  k: 'Hardware-agnostic', v: 'I²C, UART, USB, GPIO — whatever your robot speaks, the box hears.' },
-            { icon: Flame, k: 'Fire-aware',   v: 'Thermal, RGB, and acoustic fusion tuned for combustion signatures.' },
+            { icon: Flame, k: 'Fire-aware',         v: 'Thermal, RGB, and acoustic fusion tuned for combustion signatures.' },
           ].map((s, i) => (
             <motion.div
               key={s.k}
@@ -270,6 +477,7 @@ export default function AnywhereSection() {
             </motion.div>
           ))}
         </div>
+
       </div>
     </section>
   );
