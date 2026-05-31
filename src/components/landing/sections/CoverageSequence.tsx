@@ -1,14 +1,5 @@
 'use client';
 
-/**
- * CoverageSequence
- * Scroll-driven video crossfade: wildfire → drones → home → corporate
- * 
- * FIX: uses plain <video> with useMotionValueEvent to set inline opacity.
- * Avoids motion.video entirely — framer-motion's animate() on <video>
- * triggers "Offsets must be monotonically non-decreasing" in some versions.
- */
-
 import { useRef, useEffect, useCallback } from 'react';
 import {
   motion,
@@ -18,7 +9,9 @@ import {
   type MotionValue,
 } from 'framer-motion';
 
-const SECTION_VH = 420;
+// 4 clips × 150vh each = 600vh total
+const SECTION_VH = 1200;
+const CLIP_COUNT  = 4;
 
 type Anchor = 'default' | 'top-left';
 
@@ -60,77 +53,66 @@ const CLIPS: Clip[] = [
 
 const PAYOFF = "we've got you covered.";
 
-/** Linear interpolation */
+// ── lerp / mapRange helpers — no framer internals ──────────────────
 function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
+  return a + (b - a) * Math.max(0, Math.min(1, t));
+}
+function mapRange(p: number, i0: number, i1: number, o0: number, o1: number) {
+  if (i0 === i1) return o0;
+  return lerp(o0, o1, (p - i0) / (i1 - i0));
 }
 
-/** Map progress p through input range to output range — no framer needed */
-function mapRange(
-  p: number,
-  inputs: number[],
-  outputs: number[]
-): number {
-  if (p <= inputs[0]) return outputs[0];
-  if (p >= inputs[inputs.length - 1]) return outputs[outputs.length - 1];
-  for (let i = 0; i < inputs.length - 1; i++) {
-    if (p >= inputs[i] && p <= inputs[i + 1]) {
-      const t = (p - inputs[i]) / (inputs[i + 1] - inputs[i]);
-      return lerp(outputs[i], outputs[i + 1], t);
-    }
-  }
-  return outputs[outputs.length - 1];
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// VideoAct — plain <video> tag, opacity set imperatively via ref
-// so framer-motion never tries to animate the video element directly.
-// ─────────────────────────────────────────────────────────────────────
+// ── VideoAct — plain <video>, opacity set imperatively ─────────────
 function VideoAct({
   clip,
   index,
-  count,
   progress,
 }: {
   clip: Clip;
   index: number;
-  count: number;
   progress: MotionValue<number>;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
 
-  const span  = 1 / count;
-  const start = index * span;
-  const end   = start + span;
-  const fade  = span * 0.28;
+  const span    = 1 / CLIP_COUNT;
+  const start   = index * span;
+  const end     = start + span;
+  const overlap = span * 0.15; // brief crossfade between clips
 
-  const getOpacity = useCallback((p: number) => {
-    if (index === 0) {
-      return mapRange(p, [0, end, Math.min(1, end + fade)], [1, 1, 0]);
-    }
-    if (index === count - 1) {
-      return mapRange(p, [Math.max(0, start - fade), start, 1], [0, 1, 1]);
-    }
-    return mapRange(
-      p,
-      [Math.max(0, start - fade), start, end, Math.min(1, end + fade)],
-      [0, 1, 1, 0]
-    );
-  }, [index, count, start, end, fade]);
+  const getOpacity = useCallback(
+    (p: number): number => {
+      if (index === 0) {
+        // first clip: fully visible until it starts fading at end
+        if (p < end - overlap) return 1;
+        return mapRange(p, end - overlap, end, 1, 0);
+      }
+      if (index === CLIP_COUNT - 1) {
+        // last clip: fades in, then stays
+        if (p < start) return 0;
+        if (p < start + overlap) return mapRange(p, start, start + overlap, 0, 1);
+        return 1;
+      }
+      // middle clips: fade in, hold, fade out
+      if (p < start) return 0;
+      if (p < start + overlap) return mapRange(p, start, start + overlap, 0, 1);
+      if (p < end - overlap)   return 1;
+      return mapRange(p, end - overlap, end, 1, 0);
+    },
+    [index, start, end, overlap]
+  );
 
-  useMotionValueEvent(progress, 'change', (p) => {
-    const o = getOpacity(p);
-    if (videoRef.current) videoRef.current.style.opacity = String(o);
-    if (scrimRef.current) scrimRef.current.style.opacity = String(o);
-  });
+  const apply = useCallback(
+    (p: number) => {
+      const o = String(getOpacity(p));
+      if (videoRef.current) videoRef.current.style.opacity = o;
+      if (scrimRef.current) scrimRef.current.style.opacity = o;
+    },
+    [getOpacity]
+  );
 
-  // Set initial opacity on mount
-  useEffect(() => {
-    const o = getOpacity(progress.get());
-    if (videoRef.current) videoRef.current.style.opacity = String(o);
-    if (scrimRef.current) scrimRef.current.style.opacity = String(o);
-  }, [getOpacity, progress]);
+  useMotionValueEvent(progress, 'change', apply);
+  useEffect(() => { apply(progress.get()); }, [apply, progress]);
 
   return (
     <>
@@ -139,11 +121,7 @@ function VideoAct({
         className="absolute inset-0 h-full w-full object-cover"
         style={{ opacity: index === 0 ? 1 : 0 }}
         src={clip.src}
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
+        autoPlay muted loop playsInline preload="auto"
       />
       <div
         ref={scrimRef}
@@ -152,72 +130,135 @@ function VideoAct({
           opacity: index === 0 ? 1 : 0,
           background:
             clip.anchor === 'top-left'
-              ? 'linear-gradient(115deg, rgba(11,9,7,0.82) 0%, rgba(11,9,7,0.35) 40%, transparent 70%)'
-              : 'linear-gradient(180deg, rgba(11,9,7,0.7) 0%, rgba(11,9,7,0.15) 45%, rgba(11,9,7,0.25) 100%)',
+              ? 'linear-gradient(115deg,rgba(11,9,7,0.85) 0%,rgba(11,9,7,0.4) 40%,transparent 70%)'
+              : 'linear-gradient(180deg,rgba(11,9,7,0.72) 0%,rgba(11,9,7,0.1) 50%,rgba(11,9,7,0.3) 100%)',
         }}
       />
     </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// CopyAct — text overlay, still uses motion.div (fine for divs)
-// ─────────────────────────────────────────────────────────────────────
-function CopyAct({
+// ── TypewriterAct — scroll-driven char-by-char type + delete ───────
+function TypewriterAct({
   clip,
   index,
-  count,
   progress,
   isLast,
 }: {
   clip: Clip;
   index: number;
-  count: number;
   progress: MotionValue<number>;
   isLast: boolean;
 }) {
-  const span  = 1 / count;
-  const start = index * span;
-  const end   = start + span;
-  const fade  = span * 0.28;
+  const lineRef    = useRef<HTMLSpanElement>(null);
+  const cursorRef  = useRef<HTMLSpanElement>(null);
+  const tagRef     = useRef<HTMLDivElement>(null);
+  const payoffRef  = useRef<HTMLParagraphElement>(null);
+  const wrapRef    = useRef<HTMLDivElement>(null);
 
-  const clamp = (v: number) => Math.min(1, Math.max(0, v));
+  const span    = 1 / CLIP_COUNT;
+  const start   = index * span;
+  const end     = start + span;
+  const len     = clip.line.length;
 
-  const copyOpacity = useTransform(
-    progress,
-    [
-      clamp(start + fade * 0.2),
-      clamp(start + fade * 0.8),
-      clamp(end   - fade * 0.8),
-      clamp(end   - fade * 0.2),
-    ],
-    [0, 1, 1, 0]
+  // Each clip's scroll window is split:
+  //   0% – 40% → type in  (0 → len chars)
+  //  40% – 60% → hold     (full text visible)
+  //  60% – 100% → delete  (len → 0 chars)
+  // BUT: last clip never deletes — just holds + shows payoff
+  const typeEnd    = start + span * 0.40;
+  const holdEnd    = start + span * 0.60;
+  // payoff appears during hold phase of last clip
+  const payoffStart = start + span * 0.45;
+  const payoffEnd   = start + span * 0.65;
+
+  const getChars = useCallback(
+    (p: number): number => {
+      if (p <= start)    return 0;
+      if (p <= typeEnd)  return Math.round(mapRange(p, start, typeEnd, 0, len));
+      if (p <= holdEnd)  return len;
+      if (isLast)        return len; // last clip never deletes
+      // delete phase
+      const delEnd = end;
+      return Math.round(mapRange(p, holdEnd, delEnd, len, 0));
+    },
+    [start, end, typeEnd, holdEnd, len, isLast]
   );
 
-  const copyY = useTransform(
-    progress,
-    [clamp(start), clamp(end)],
-    [24, -24]
+  const getWrapOpacity = useCallback(
+    (p: number): number => {
+      // fade the whole act in just before its window
+      const fadeIn = start - span * 0.05;
+      if (index === 0) return 1; // first act always visible from top
+      if (p < fadeIn)  return 0;
+      if (p < start)   return mapRange(p, fadeIn, start, 0, 1);
+      if (isLast)      return 1;
+      // fade out after delete is done
+      const fadeOut = end + span * 0.02;
+      if (p < end)     return 1;
+      return mapRange(p, end, fadeOut, 1, 0);
+    },
+    [index, start, end, span, isLast]
   );
 
-  const payoffOpacity = useTransform(
-    progress,
-    [clamp(start + span * 0.45), clamp(start + span * 0.65)],
-    [0, 1]
+  const getPayoffChars = useCallback(
+    (p: number): number => {
+      if (!isLast) return 0;
+      const pLen = PAYOFF.length;
+      if (p < payoffStart) return 0;
+      if (p < payoffEnd)   return Math.round(mapRange(p, payoffStart, payoffEnd, 0, pLen));
+      return pLen;
+    },
+    [isLast, payoffStart, payoffEnd]
   );
+
+  const apply = useCallback(
+    (p: number) => {
+      const chars   = getChars(p);
+      const wOpacity = getWrapOpacity(p);
+
+      if (lineRef.current)
+        lineRef.current.textContent = clip.line.slice(0, chars);
+
+      if (wrapRef.current)
+        wrapRef.current.style.opacity = String(wOpacity);
+
+      // blink cursor only while actively typing or deleting
+      if (cursorRef.current) {
+        const atFull  = chars === len;
+        const atZero  = chars === 0;
+        const holding = atFull && p <= holdEnd;
+        // during hold: solid cursor. typing/deleting: blink via class
+        cursorRef.current.style.opacity = (atZero && !isLast) ? '0' : '1';
+        cursorRef.current.classList.toggle('animate-pulse', !holding && !atZero);
+      }
+
+      if (payoffRef.current && isLast) {
+        const pChars = getPayoffChars(p);
+        payoffRef.current.textContent = PAYOFF.slice(0, pChars);
+        payoffRef.current.style.opacity = pChars > 0 ? '1' : '0';
+      }
+    },
+    [clip.line, len, holdEnd, isLast, getChars, getWrapOpacity, getPayoffChars]
+  );
+
+  useMotionValueEvent(progress, 'change', apply);
+  useEffect(() => { apply(progress.get()); }, [apply, progress]);
 
   const anchorClasses =
     clip.anchor === 'top-left'
-      ? 'items-start justify-start text-left pt-24 lg:pt-28'
-      : 'items-start justify-start text-left pt-28 lg:pt-32';
+      ? 'pt-24 lg:pt-28'
+      : 'pt-28 lg:pt-32';
 
   return (
-    <motion.div
-      style={{ opacity: copyOpacity, y: copyY }}
+    <div
+      ref={wrapRef}
       className={`absolute inset-0 z-10 flex flex-col px-6 sm:px-10 lg:px-20 ${anchorClasses}`}
+      style={{ opacity: index === 0 ? 1 : 0 }}
     >
       <div className="max-w-3xl">
-        <div className="mb-4 flex items-center gap-2">
+        {/* tag */}
+        <div ref={tagRef} className="mb-5 flex items-center gap-2">
           <span
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: clip.accent ? 'var(--accent)' : 'var(--text-muted)' }}
@@ -227,55 +268,82 @@ function CopyAct({
           </span>
         </div>
 
+        {/* typewriter line */}
         <p
           className="font-display text-3xl leading-[1.08] sm:text-5xl lg:text-6xl"
-          style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em' }}
+          style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em', minHeight: '1.1em' }}
         >
-          {clip.line}
+          <span ref={lineRef} />
+          {/* blinking cursor */}
+          <span
+            ref={cursorRef}
+            className="inline-block w-[3px] ml-[2px] rounded-sm align-middle animate-pulse"
+            style={{
+              height: '0.85em',
+              background: clip.accent ? 'var(--accent)' : 'var(--text-primary)',
+              verticalAlign: 'middle',
+              opacity: index === 0 ? 1 : 0,
+            }}
+          />
         </p>
 
+        {/* payoff — last clip only, also typewritten */}
         {isLast && (
-          <motion.p
-            style={{ opacity: payoffOpacity }}
+          <p
+            ref={payoffRef}
             className="mt-4 font-display text-4xl sm:text-6xl lg:text-7xl"
-          >
-            <span style={{ color: 'var(--accent)' }}>{PAYOFF}</span>
-          </motion.p>
+            style={{
+              color: 'var(--accent)',
+              letterSpacing: '-0.02em',
+              opacity: 0,
+              minHeight: '1.1em',
+            }}
+          />
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Tick
-// ─────────────────────────────────────────────────────────────────────
+// ── Progress ticks ──────────────────────────────────────────────────
 function Tick({
   index,
-  count,
   progress,
 }: {
   index: number;
-  count: number;
   progress: MotionValue<number>;
 }) {
-  const span  = 1 / count;
-  const clamp = (v: number) => Math.min(1, Math.max(0, v));
-  const active = useTransform(
-    progress,
-    [clamp(index * span), clamp(index * span + span * 0.5), clamp((index + 1) * span)],
-    [0.25, 1, 0.25]
+  const tickRef = useRef<HTMLSpanElement>(null);
+  const span    = 1 / CLIP_COUNT;
+  const cl      = (v: number) => Math.min(1, Math.max(0, v));
+
+  const apply = useCallback(
+    (p: number) => {
+      if (!tickRef.current) return;
+      const start = index * span;
+      const mid   = start + span * 0.5;
+      const end   = start + span;
+      let o: number;
+      if (p < start) o = 0.25;
+      else if (p < mid) o = mapRange(p, start, mid, 0.25, 1);
+      else if (p < end) o = mapRange(p, mid, end, 1, 0.25);
+      else o = 0.25;
+      tickRef.current.style.opacity = String(cl(o));
+    },
+    [index, span]
   );
+
+  useMotionValueEvent(progress, 'change', apply);
+  useEffect(() => { apply(progress.get()); }, [apply, progress]);
+
   return (
-    <motion.span style={{ opacity: active }} className="h-1 w-6 rounded-full">
+    <span ref={tickRef} className="h-1 w-6 rounded-full" style={{ opacity: 0.25 }}>
       <span className="block h-full w-full rounded-full" style={{ background: 'var(--accent)' }} />
-    </motion.span>
+    </span>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// CoverageSequence
-// ─────────────────────────────────────────────────────────────────────
+// ── CoverageSequence ────────────────────────────────────────────────
 export default function CoverageSequence() {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
@@ -287,39 +355,38 @@ export default function CoverageSequence() {
     <section
       ref={ref}
       className="relative w-full"
-      style={{ height: `${SECTION_VH}vh`, background: '#0B0907' }}
+      style={{ height: `${SECTION_VH}vh`, background: '#0B0907', isolation: 'isolate' }}
     >
       <div className="sticky top-0 h-screen w-full overflow-hidden">
 
-        {/* Videos — plain elements, opacity driven imperatively */}
+        {/* Videos — imperative opacity only, no motion.video */}
         {CLIPS.map((clip, i) => (
           <VideoAct
             key={clip.src}
             clip={clip}
             index={i}
-            count={CLIPS.length}
             progress={scrollYProgress}
           />
         ))}
 
-        {/* Copy — motion.div is fine */}
+        {/* Typewriter text layers */}
         {CLIPS.map((clip, i) => (
-          <CopyAct
-            key={clip.src + '-copy'}
+          <TypewriterAct
+            key={clip.src + '-type'}
             clip={clip}
             index={i}
-            count={CLIPS.length}
             progress={scrollYProgress}
-            isLast={i === CLIPS.length - 1}
+            isLast={i === CLIP_COUNT - 1}
           />
         ))}
 
         <div className="cinematic-vignette" />
         <div className="film-grain" />
 
+        {/* Progress ticks */}
         <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2">
           {CLIPS.map((_, i) => (
-            <Tick key={i} index={i} count={CLIPS.length} progress={scrollYProgress} />
+            <Tick key={i} index={i} progress={scrollYProgress} />
           ))}
         </div>
       </div>
