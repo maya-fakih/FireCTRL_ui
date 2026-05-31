@@ -1,4 +1,9 @@
+import type { Metadata } from 'next';
 import DocsSidebar from '@/components/DocsSidebar';
+
+export const metadata: Metadata = {
+  icons: { icon: '/favicon.png' },
+};
 
 export default function DocsLayout({ children }: { children: React.ReactNode }) {
   return (
