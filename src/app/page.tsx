@@ -8,7 +8,7 @@
  *
  *   wildfire   → "From wildfires raging across a ridge…"
  *   drones     → "…to the hobbyist flying at dusk…"
- *   home       → "…to the family asleep at home…"
+ *   home       → "…to the family aasleep at home…"
  *   corporate  → "…to the tower that never sleeps."
  *
  * HOW IT WORKS
@@ -102,33 +102,45 @@ function Act({
   const end = start + span;
   const fade = span * 0.28; // crossfade overlap
 
-  // Video opacity: fade in just before its window, out just after.
-  // First clip starts already visible (no fade-in from black at the top).
-  const inStart = index === 0 ? -0.001 : start - fade;
-  const outEnd = isLast ? 1.001 : end + fade;
+  // Safe non-decreasing bounds for Video Opacity
+  const videoIn  = index === 0 ? 0 : Math.max(0, start - fade);
+  const videoOut = isLast ? 1 : Math.min(1, end + fade);
 
   const videoOpacity = useTransform(
     progress,
-    [inStart, start, end, outEnd],
+    [videoIn, start, end, videoOut],
     [index === 0 ? 1 : 0, 1, 1, isLast ? 1 : 0]
   );
 
-  // Copy moves a touch slower + fades a hair tighter for a parallax feel.
+  // Safe non-decreasing bounds for Copy Opacity
+  const copyInStart  = Math.max(0, start - fade * 0.5);
+  const copyInEnd    = start + fade * 0.4;
+  const copyOutStart = end - fade * 0.4;
+  const copyOutEnd   = Math.min(1, end + fade * 0.5);
+
   const copyOpacity = useTransform(
     progress,
-    [start - fade * 0.5, start + fade * 0.4, end - fade * 0.4, end + fade * 0.5],
+    [copyInStart, copyInEnd, copyOutStart, copyOutEnd],
     [0, 1, 1, 0]
   );
+
+  // Safe non-decreasing bounds for Copy Parallax (Y-axis)
+  const yStart = Math.max(0, start - fade);
+  const yEnd   = Math.min(1, end + fade);
+
   const copyY = useTransform(
     progress,
-    [start - fade, end + fade],
+    [yStart, yEnd],
     [28, -28]
   );
 
-  // Payoff line over the last clip — appears in the back half of its act.
+  // Payoff line over the last clip — appears safely in the back half
+  const payoffInStart = start + span * 0.45;
+  const payoffInEnd   = Math.min(1, start + span * 0.65);
+
   const payoffOpacity = useTransform(
     progress,
-    [start + span * 0.45, start + span * 0.65],
+    [payoffInStart, payoffInEnd],
     [0, 1]
   );
 
@@ -256,11 +268,18 @@ function Tick({
   progress: MotionValue<number>;
 }) {
   const span = 1 / count;
+  
+  // Safe bounded ranges for the progress dots
+  const tickIn   = Math.max(0, index * span - 0.02);
+  const tickMid  = index * span + span * 0.5;
+  const tickOut  = Math.min(1, (index + 1) * span + 0.02);
+
   const active = useTransform(
     progress,
-    [index * span - 0.02, index * span + span * 0.5, (index + 1) * span + 0.02],
+    [tickIn, tickMid, tickOut],
     [0.25, 1, 0.25]
   );
+
   return (
     <motion.span
       style={{ opacity: active }}
