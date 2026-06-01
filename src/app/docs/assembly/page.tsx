@@ -68,12 +68,15 @@ export default function AssemblyPage() {
       const W = mountRef.current.clientWidth;
       const H = mountRef.current.clientHeight;
 
-      // Scene
+      // Scene — background matches the app theme
       const scene = new (THREE.Scene as new () => {
         background: unknown;
         add: (obj: unknown) => void;
       })();
-      (scene as { background: unknown }).background = new (THREE.Color as new (c: number) => unknown)(0x161210);
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+        || document.documentElement.classList.contains('dark')
+        || window.matchMedia('(prefers-color-scheme: dark)').matches;
+      (scene as { background: unknown }).background = new (THREE.Color as new (c: number) => unknown)(isDark ? 0x1a1a1a : 0xf5f5f0);
       sceneRef.current = scene;
 
       // Camera
@@ -101,17 +104,17 @@ export default function AssemblyPage() {
       mountRef.current.appendChild(renderer.domElement);
       rendererRef.current = renderer;
 
-      // Lighting — lower ambient so model has depth, accent with terracotta fill
-      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0x332822, 0.4);
+      // Lighting — bright and neutral so model shows its real colors
+      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0xffffff, 1.2);
       scene.add(ambient);
-      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xfff0e0, 1.8);
+      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xffffff, 1.5);
       key.position.set(4, 6, 5);
       key.castShadow = true;
       scene.add(key);
-      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xe05a2b, 0.6);
+      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.8);
       fill.position.set(-4, 1, -3);
       scene.add(fill);
-      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0x6688aa, 0.3);
+      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.4);
       rim.position.set(0, -3, -5);
       scene.add(rim);
 
@@ -137,22 +140,6 @@ export default function AssemblyPage() {
           (model as { position: { sub: (v: unknown) => void } }).position.sub(scaledCenter);
           sphericalRef.current.radius = 2.8;
 
-          // Darken any white or near-white materials so they're visible on dark bg
-          (model as { traverse: (cb: (c: unknown) => void) => void }).traverse((child: unknown) => {
-            const c = child as { isMesh?: boolean; material?: { color?: { r: number; g: number; b: number; multiplyScalar: (s: number) => void }; metalness?: number; roughness?: number; needsUpdate?: boolean } };
-            if (c.isMesh && c.material && c.material.color) {
-              const col = c.material.color;
-              const brightness = col.r * 0.299 + col.g * 0.587 + col.b * 0.114;
-              // If material is very bright (white/light grey), darken it significantly
-              if (brightness > 0.7) {
-                col.multiplyScalar(0.25);
-              } else if (brightness > 0.4) {
-                col.multiplyScalar(0.5);
-              }
-              if (c.material.roughness !== undefined) c.material.roughness = Math.max(c.material.roughness, 0.4);
-              if (c.material.needsUpdate !== undefined) c.material.needsUpdate = true;
-            }
-          });
 
           scene.add(model);
           modelRef.current = model;
@@ -263,7 +250,7 @@ export default function AssemblyPage() {
           {loading && !error && (
             <div
               className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-              style={{ background: '#161210' }}
+              style={{ background: 'var(--color-surface)' }}
             >
               <div
                 className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
@@ -278,7 +265,7 @@ export default function AssemblyPage() {
           {error && (
             <div
               className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-              style={{ background: '#161210' }}
+              style={{ background: 'var(--color-surface)' }}
             >
               <span className="text-3xl">⚠️</span>
               <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
