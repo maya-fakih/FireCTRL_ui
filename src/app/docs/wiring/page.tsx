@@ -114,67 +114,37 @@ export default function WiringPage() {
       });
   }, []);
 
-  // Map dark wire colors to bright glow equivalents so they pop on dark bg
-  const GLOW_COLOR: Record<string, string> = {
-    '#1b5bb3': '#4d9fff',   // dark blue → bright blue
-    '#7a3a73': '#dd66cc',   // dark purple → bright magenta
-    '#8c0000': '#ff4444',   // dark red → bright red
-    '#6c2710': '#cc6633',   // dark brown → bright orange-brown
-    '#000000': '#888888',   // black → grey glow
-    '#999999': '#cccccc',   // grey → light grey
-    '#ad6a38': '#ffaa55',   // orange → bright orange
-    '#d6d63a': '#ffff55',   // yellow-green → bright yellow
-    '#00a527': '#00ff44',   // green → bright green
-    '#ffff00': '#ffff88',   // yellow → bright yellow
-  };
-
   useEffect(() => {
     if (!svgLoaded || !svgContainerRef.current) return;
     const svgEl = svgContainerRef.current.querySelector('svg');
     if (!svgEl) return;
 
     if (!active) {
-      svgEl.querySelectorAll<HTMLElement>('path, line, g[partID], rect, ellipse, circle, polygon').forEach(el => {
+      svgEl.querySelectorAll<HTMLElement>('path, line, g[partID]').forEach(el => {
         el.style.opacity = '1';
         el.style.filter = '';
-        el.style.transition = 'opacity 0.25s, filter 0.25s';
+        el.style.transition = 'opacity 0.2s, filter 0.2s';
       });
       return;
     }
 
     const activeColors = new Set((COMPONENT_COLORS[active] || []).map(c => c.toLowerCase()));
 
-    // Dim everything first
     svgEl.querySelectorAll<HTMLElement>('path[stroke], line[stroke]').forEach(el => {
+      const stroke = (el.getAttribute('stroke') || '').toLowerCase();
       const opacity = el.getAttribute('opacity') || '1';
-      if (parseFloat(opacity) < 0.5) return; // skip fritzing connector dots
-      el.style.transition = 'opacity 0.25s, filter 0.25s';
-      el.style.opacity = '0.05';
-      el.style.filter = '';
+      // skip the green fuzzy connector dots (opacity 0.2)
+      if (parseFloat(opacity) < 0.5) return;
+      const isActive = activeColors.has(stroke);
+      el.style.transition = 'opacity 0.2s, filter 0.2s';
+      el.style.opacity = isActive ? '1' : '0.06';
+      el.style.filter = isActive ? `drop-shadow(0 0 3px ${stroke}) drop-shadow(0 0 6px ${stroke})` : '';
     });
 
     // Dim component bodies
     svgEl.querySelectorAll<HTMLElement>('g[partID]').forEach(el => {
-      el.style.transition = 'opacity 0.25s';
-      el.style.opacity = '0.15';
-    });
-
-    // Highlight active wires with bright glow
-    svgEl.querySelectorAll<HTMLElement>('path[stroke], line[stroke]').forEach(el => {
-      const stroke = (el.getAttribute('stroke') || '').toLowerCase();
-      const opacity = el.getAttribute('opacity') || '1';
-      if (parseFloat(opacity) < 0.5) return;
-      if (!activeColors.has(stroke)) return;
-      const glowColor = GLOW_COLOR[stroke] || stroke;
-      el.style.opacity = '1';
-      el.style.filter = [
-        `drop-shadow(0 0 2px ${glowColor})`,
-        `drop-shadow(0 0 5px ${glowColor})`,
-        `drop-shadow(0 0 10px ${glowColor})`,
-      ].join(' ');
-      // Also boost stroke width visually via stroke on the element
-      const currentWidth = parseFloat(el.getAttribute('stroke-width') || '3.2');
-      el.style.strokeWidth = String(currentWidth * 1.3);
+      el.style.transition = 'opacity 0.2s';
+      el.style.opacity = '0.2';
     });
   }, [active, svgLoaded]);
 
