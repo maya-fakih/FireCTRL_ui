@@ -23,9 +23,7 @@ export default function AssemblyPage() {
   const wireframeRef = useRef(false);
 
   const updateCamera = () => {
-    const THREE = (window as unknown as { THREE: unknown }).THREE as {
-      [key: string]: unknown;
-    };
+    const THREE = (window as unknown as { THREE: unknown }).THREE as { [key: string]: unknown };
     if (!cameraRef.current || !THREE) return;
     const { theta, phi, radius } = sphericalRef.current;
     const { x, y, z } = targetRef.current;
@@ -42,7 +40,6 @@ export default function AssemblyPage() {
     let mounted = true;
 
     const loadThree = async () => {
-      // Load Three.js
       if (!(window as unknown as { THREE?: unknown }).THREE) {
         await new Promise<void>((resolve, reject) => {
           const s = document.createElement('script');
@@ -52,11 +49,16 @@ export default function AssemblyPage() {
           document.head.appendChild(s);
         });
       }
-
-      // Load GLTFLoader
       await new Promise<void>((resolve, reject) => {
         const s = document.createElement('script');
         s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+        s.onload = () => resolve();
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/pmrem/PMREMGenerator.js';
         s.onload = () => resolve();
         s.onerror = reject;
         document.head.appendChild(s);
@@ -68,21 +70,16 @@ export default function AssemblyPage() {
       const W = mountRef.current.clientWidth;
       const H = mountRef.current.clientHeight;
 
-      // Scene — background matches the app theme
-      const scene = new (THREE.Scene as new () => {
-        background: unknown;
-        add: (obj: unknown) => void;
-      })();
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
-        || document.documentElement.classList.contains('dark')
+      // Scene — background matches theme
+      const scene = new (THREE.Scene as new () => { background: unknown; environment: unknown; add: (obj: unknown) => void })();
+      const isDark = document.documentElement.classList.contains('dark')
+        || document.documentElement.getAttribute('data-theme') === 'dark'
         || window.matchMedia('(prefers-color-scheme: dark)').matches;
-      (scene as { background: unknown }).background = new (THREE.Color as new (c: number) => unknown)(isDark ? 0x1a1a1a : 0xf5f5f0);
+      (scene as { background: unknown }).background = new (THREE.Color as new (c: number) => unknown)(isDark ? 0x1e1e1e : 0xf0eeeb);
       sceneRef.current = scene;
 
       // Camera
-      const camera = new (THREE.PerspectiveCamera as new (fov: number, aspect: number, near: number, far: number) => unknown)(
-        45, W / H, 0.01, 1000
-      );
+      const camera = new (THREE.PerspectiveCamera as new (fov: number, aspect: number, near: number, far: number) => unknown)(45, W / H, 0.01, 1000);
       cameraRef.current = camera;
       updateCamera();
 
@@ -95,31 +92,64 @@ export default function AssemblyPage() {
         toneMappingExposure: number;
         render: (s: unknown, c: unknown) => void;
         domElement: HTMLCanvasElement;
+        outputEncoding: unknown;
       })({ antialias: true, alpha: false });
       renderer.setSize(W, H);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.shadowMap.enabled = true;
       renderer.toneMapping = (THREE as { ACESFilmicToneMapping: unknown }).ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.2;
+      renderer.toneMappingExposure = 1.4;
+      renderer.outputEncoding = (THREE as { sRGBEncoding: unknown }).sRGBEncoding;
       mountRef.current.appendChild(renderer.domElement);
       rendererRef.current = renderer;
 
-      // Lighting — bright and neutral so model shows its real colors
-      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0xffffff, 1.2);
+      // ── IBL environment — this is what makes metallic materials look real ──
+      // Generate a neutral studio environment using PMREMGenerator
+      const pmremGenerator = new ((THREE as { PMREMGenerator: new (r: unknown) => {
+        compileEquirectangularShader: () => void;
+        fromScene: (s: unknown, blur?: number) => { texture: unknown };
+        dispose: () => void;
+      } }).PMREMGenerator)(renderer);
+      pmremGenerator.compileEquirectangularShader();
+
+      // Use RoomEnvironment-style neutral grey scene for IBL
+      const envScene = new (THREE.Scene as new () => { background: unknown; add: (obj: unknown) => void })();
+      // Add some coloured planes to simulate a studio environment
+      const addPlane = (color: number, x: number, y: number, z: number, rx: number, ry: number) => {
+        const geo = new (THREE.PlaneGeometry as new (w: number, h: number) => unknown)(20, 20);
+        const mat = new (THREE.MeshBasicMaterial as new (opts: unknown) => unknown)({ color, side: (THREE as { DoubleSide: unknown }).DoubleSide });
+        const mesh = new (THREE.Mesh as new (g: unknown, m: unknown) => { rotation: { x: number; y: number }; position: { set: (x: number, y: number, z: number) => void } })(geo, mat);
+        mesh.rotation.x = rx;
+        mesh.rotation.y = ry;
+        mesh.position.set(x, y, z);
+        (envScene as { add: (o: unknown) => void }).add(mesh);
+      };
+      addPlane(0xffffff, 0, 0, -10, 0, 0);     // back — white
+      addPlane(0xdddddd, -10, 0, 0, 0, Math.PI / 2); // left — light grey
+      addPlane(0xdddddd, 10, 0, 0, 0, -Math.PI / 2); // right
+      addPlane(0xffffff, 0, 10, 0, Math.PI / 2, 0);  // top — white
+      addPlane(0xbbbbbb, 0, -10, 0, -Math.PI / 2, 0); // bottom — grey
+      addPlane(0xeeeeee, 0, 0, 10, 0, Math.PI); // front
+      const envTexture = pmremGenerator.fromScene(envScene, 0.04).texture;
+      (scene as { environment: unknown }).environment = envTexture;
+      pmremGenerator.dispose();
+
+      // Lighting — bright key + soft fills for shadow depth
+      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0xffffff, 0.6);
       scene.add(ambient);
-      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xffffff, 1.5);
-      key.position.set(4, 6, 5);
+      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xffffff, 2.0);
+      key.position.set(5, 8, 5);
       key.castShadow = true;
       scene.add(key);
-      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.8);
-      fill.position.set(-4, 1, -3);
+      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xfff5ee, 0.8);
+      fill.position.set(-5, 3, -3);
       scene.add(fill);
-      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.4);
-      rim.position.set(0, -3, -5);
+      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.5);
+      rim.position.set(0, -4, -6);
       scene.add(rim);
 
       // Load GLB
-      const loader = new ((THREE as { GLTFLoader: new () => { load: (url: string, onLoad: (gltf: { scene: unknown }) => void, onProgress: (xhr: { loaded: number; total: number }) => void, onError: (err: unknown) => void) => void } }).GLTFLoader)();
+      const loader = new ((THREE as { GLTFLoader: new () => { load: (url: string, onLoad: (gltf: { scene: unknown }) => void, onProgress: () => void, onError: () => void) => void } }).GLTFLoader)();
       loader.load(
         '/robot_assembly.glb',
         (gltf: { scene: unknown }) => {
@@ -129,25 +159,19 @@ export default function AssemblyPage() {
           box.setFromObject(model);
           const center = box.getCenter(new (THREE.Vector3 as new () => unknown)());
           const size = box.getSize(new (THREE.Vector3 as new () => unknown)());
-          const maxDim = Math.max(
-            (size as { x: number; y: number; z: number }).x,
-            (size as { x: number; y: number; z: number }).y,
-            (size as { x: number; y: number; z: number }).z
-          );
+          const maxDim = Math.max((size as { x: number; y: number; z: number }).x, (size as { x: number; y: number; z: number }).y, (size as { x: number; y: number; z: number }).z);
           const scale = 2 / maxDim;
           (model as { scale: { setScalar: (s: number) => void }; position: { sub: (v: unknown) => void } }).scale.setScalar(scale);
           const scaledCenter = (center as { multiplyScalar: (s: number) => unknown }).multiplyScalar(scale);
           (model as { position: { sub: (v: unknown) => void } }).position.sub(scaledCenter);
           sphericalRef.current.radius = 2.8;
-
-
           scene.add(model);
           modelRef.current = model;
           setLoading(false);
           updateCamera();
         },
         () => {},
-        () => { if (mounted) setError(true); setLoading(false); }
+        () => { if (mounted) { setError(true); setLoading(false); } }
       );
 
       // Animate
@@ -172,7 +196,7 @@ export default function AssemblyPage() {
       };
       window.addEventListener('resize', onResize);
 
-      // Mouse
+      // Mouse controls
       const el = renderer.domElement;
       el.addEventListener('mousedown', (e: MouseEvent) => {
         dragRef.current = { active: true, right: e.button === 2, lastX: e.clientX, lastY: e.clientY };
@@ -239,107 +263,53 @@ export default function AssemblyPage() {
   return (
     <div>
       <TopBar title="Robot Assembly" subtitle="Interactive 3D model — drag to rotate, scroll to zoom" />
-
-      {/* 3D Viewer */}
-      <div
-        className="card overflow-hidden mb-4"
-        style={{ height: 500, position: 'relative' }}
-      >
+      <div className="card overflow-hidden mb-4" style={{ height: 500, position: 'relative' }}>
         <div ref={mountRef} style={{ width: '100%', height: '100%', cursor: 'grab' }} />
-
-          {loading && !error && (
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-              style={{ background: 'var(--color-surface)' }}
-            >
-              <div
-                className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
-                style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }}
-              />
-              <span className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                Loading robot assembly...
-              </span>
-            </div>
-          )}
-
-          {error && (
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-              style={{ background: 'var(--color-surface)' }}
-            >
-              <span className="text-3xl">⚠️</span>
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Could not load model
-              </span>
-              <span className="text-xs text-center max-w-xs" style={{ color: 'var(--text-muted)' }}>
-                Make sure <code style={{ fontFamily: 'monospace' }}>robot_assembly.glb</code> is in your <code style={{ fontFamily: 'monospace' }}>/public</code> folder
-              </span>
-            </div>
-          )}
-
-          {!loading && !error && (
-            <div
-              className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px]"
-              style={{ color: 'var(--text-muted)', pointerEvents: 'none' }}
-            >
-              Drag to rotate · Scroll to zoom · Right-drag to pan
-            </div>
-          )}
-        </div>
-
-        {/* Controls */}
-        <div className="flex gap-2 mb-6">
-          <button onClick={resetCamera} className="btn btn-ghost">
-            <RotateCcw size={14} /> Reset view
-          </button>
-          <button
-            onClick={toggleAutoRotate}
-            className="btn"
-            style={{
-              background: autoRotate ? 'var(--accent-soft)' : 'transparent',
-              color: autoRotate ? 'var(--accent)' : 'var(--text-secondary)',
-              border: `1px solid ${autoRotate ? 'var(--accent)' : 'var(--border)'}`,
-            }}
-          >
-            {autoRotate ? <Pause size={14} /> : <Play size={14} />}
-            Auto rotate
-          </button>
-          <button
-            onClick={toggleWireframe}
-            className="btn"
-            style={{
-              background: wireframe ? 'var(--accent-soft)' : 'transparent',
-              color: wireframe ? 'var(--accent)' : 'var(--text-secondary)',
-              border: `1px solid ${wireframe ? 'var(--accent)' : 'var(--border)'}`,
-            }}
-          >
-            <Box size={14} /> Wireframe
-          </button>
-        </div>
-
-        {/* Component legend */}
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Base platform', desc: 'Mounting plate with pan servo housing' },
-            { label: 'Pan servo (bottom)', desc: 'SG90 · 0–180° horizontal rotation' },
-            { label: 'Tilt servo (elbow)', desc: 'SG90 · ±45° vertical tilt' },
-            { label: 'IMX500 camera mount', desc: 'CSI ribbon cable routed through arm' },
-            { label: 'Water nozzle', desc: 'Brass hex nut + hose barb fitting' },
-            { label: 'Pump connection', desc: 'Silicone tube from 12V submersible pump' },
-          ].map(item => (
-            <div
-              key={item.label}
-              className="card-flat p-4"
-            >
-              <div className="text-[12px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-                {item.label}
-              </div>
-              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                {item.desc}
-              </div>
-            </div>
-          ))}
-        </div>
+        {loading && !error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: 'var(--color-surface)' }}>
+            <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--accent)' }} />
+            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Loading robot assembly...</span>
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ background: 'var(--color-surface)' }}>
+            <span className="text-3xl">⚠️</span>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Could not load model</span>
+            <span className="text-xs text-center max-w-xs" style={{ color: 'var(--text-muted)' }}>
+              Make sure <code style={{ fontFamily: 'monospace' }}>robot_assembly.glb</code> is in your <code style={{ fontFamily: 'monospace' }}>/public</code> folder
+            </span>
+          </div>
+        )}
+        {!loading && !error && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 text-[11px]" style={{ color: 'var(--text-muted)', pointerEvents: 'none' }}>
+            Drag to rotate · Scroll to zoom · Right-drag to pan
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2 mb-6">
+        <button onClick={resetCamera} className="btn btn-ghost"><RotateCcw size={14} /> Reset view</button>
+        <button onClick={toggleAutoRotate} className="btn" style={{ background: autoRotate ? 'var(--accent-soft)' : 'transparent', color: autoRotate ? 'var(--accent)' : 'var(--text-secondary)', border: `1px solid ${autoRotate ? 'var(--accent)' : 'var(--border)'}` }}>
+          {autoRotate ? <Pause size={14} /> : <Play size={14} />} Auto rotate
+        </button>
+        <button onClick={toggleWireframe} className="btn" style={{ background: wireframe ? 'var(--accent-soft)' : 'transparent', color: wireframe ? 'var(--accent)' : 'var(--text-secondary)', border: `1px solid ${wireframe ? 'var(--accent)' : 'var(--border)'}` }}>
+          <Box size={14} /> Wireframe
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { label: 'Base platform', desc: 'Mounting plate with pan servo housing' },
+          { label: 'Pan servo (bottom)', desc: 'SG90 · 0–180° horizontal rotation' },
+          { label: 'Tilt servo (elbow)', desc: 'SG90 · ±45° vertical tilt' },
+          { label: 'IMX500 camera mount', desc: 'CSI ribbon cable routed through arm' },
+          { label: 'Water nozzle', desc: 'Brass hex nut + hose barb fitting' },
+          { label: 'Pump connection', desc: 'Silicone tube from 12V submersible pump' },
+        ].map(item => (
+          <div key={item.label} className="card-flat p-4">
+            <div className="text-[12px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>{item.label}</div>
+            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{item.desc}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
