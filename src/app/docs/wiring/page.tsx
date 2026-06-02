@@ -6,87 +6,100 @@ import { Cpu, Zap, Thermometer, Wind, Camera, Wrench } from 'lucide-react';
 
 type ComponentId = 'pi' | 'atx' | 'amg' | 'ads' | 'mq2' | 'servo' | 'pump' | 'cam' | null;
 
-// ── Exact color→component mapping traced from the SVG ──────────────────────
-// #8c0000  dark red   = 5V rail (ATX → Pi, servos, relay VCC)
-// #ad6a38  orange     = 3.3V rail (ATX → AMG VIN, ADS VDD) + relay signal
-// #d6d63a  yellow-grn = SCL bus (Pi GPIO3 → breadboard → AMG8833 → ADS1115)
-// #00a527  green      = SDA bus (Pi GPIO2 → breadboard → AMG8833 → ADS1115)
-// #7a3a73  purple     = GPIO17 pump relay signal (Pi → relay IN)
-// #1b5bb3  blue       = servo signal wires (Pi GPIO27/22 → breadboard → servos)
-// #ffff00  yellow     = servo signal short wires at servo body (→ breadboard)
-// #6c2710  brown      = MQ-2 voltage divider → ADS1115 A0
-// #999999  grey       = relay NC/NO output wire
-// #000000  black      = GND (all components)
+// ── Wire color → component mapping (traced from Fritzing breadboard view) ───
+// #cc1414  red        = 5 V rail (ATX → Pi, servos, relay, sensors)
+// #ef6100  orange     = 3.3 V rail / relay signal wire
+// #fff800  yellow     = SCL bus + ATX 12 V → relay COM
+// #25cc35  green      = SDA bus (Pi GPIO2 → AMG8833 + ADS1115)
+// #ab58a2  purple     = GPIO17 pump relay signal
+// #418dd9  blue       = servo signal wires (GPIO27 / GPIO22)
+// #8c3b00  brown      = MQ-2 voltage divider → ADS1115 A0
+// #404040  dark grey  = GND (all components)
+// #ffffff  white      = MQ-2 heater wire
 
 const COMPONENT_COLORS: Record<string, string[]> = {
-  atx:   ['#8c0000', '#ad6a38', '#d6d63a', '#000000'],
-  pi:    ['#8c0000', '#ad6a38', '#d6d63a', '#00a527', '#7a3a73', '#1b5bb3', '#000000'],
-  amg:   ['#ad6a38', '#d6d63a', '#00a527', '#000000'],
-  ads:   ['#ad6a38', '#d6d63a', '#00a527', '#6c2710', '#000000'],
-  mq2:   ['#6c2710', '#8c0000', '#000000'],
-  servo: ['#ffff00', '#1b5bb3', '#8c0000', '#000000'],
-  pump:  ['#7a3a73', '#999999', '#8c0000', '#000000'],
+  atx:   ['#cc1414', '#ef6100', '#fff800', '#404040'],
+  pi:    ['#cc1414', '#ef6100', '#fff800', '#25cc35', '#ab58a2', '#418dd9', '#404040'],
+  amg:   ['#cc1414', '#25cc35', '#fff800', '#404040'],
+  ads:   ['#cc1414', '#25cc35', '#fff800', '#8c3b00', '#404040'],
+  mq2:   ['#cc1414', '#ef6100', '#8c3b00', '#ffffff', '#404040'],
+  servo: ['#cc1414', '#418dd9', '#404040'],
+  pump:  ['#cc1414', '#ef6100', '#fff800', '#ab58a2', '#404040'],
   cam:   [],
 };
 
+// SVG partID → component (for body group highlighting)
+const PARTID_MAP: Record<string, string> = {
+  '854378390': 'pi',
+  '854378850': 'servo',
+  '854378880': 'servo',
+  '854378920': 'ads',
+  '854378960': 'amg',
+  '854379440': 'pump',
+  '854380840': 'atx',
+  '854386000': 'mq2',
+  '854392680': 'mq2',
+  '854400050': 'mq2',
+  '57900':     '_breadboard',
+};
+
 const COMPONENTS = [
-  { id: 'atx',   label: 'ATX PSU',        sub: '12V / 5V / 3.3V rails',    icon: Zap },
-  { id: 'pi',    label: 'Raspberry Pi 5', sub: 'GPIO + I2C + power',        icon: Cpu },
-  { id: 'amg',   label: 'AMG8833',        sub: '8×8 thermal — I2C 0x69',   icon: Thermometer },
-  { id: 'ads',   label: 'ADS1115',        sub: '16-bit ADC — I2C 0x48',    icon: Cpu },
+  { id: 'atx',   label: 'ATX PSU',        sub: '12 V / 5 V / 3.3 V rails', icon: Zap },
+  { id: 'pi',    label: 'Raspberry Pi 5', sub: 'GPIO + I²C + power',       icon: Cpu },
+  { id: 'amg',   label: 'AMG8833',        sub: '8×8 thermal — I²C 0x69',   icon: Thermometer },
+  { id: 'ads',   label: 'ADS1115',        sub: '16-bit ADC — I²C 0x48',    icon: Cpu },
   { id: 'mq2',   label: 'MQ-2',           sub: 'Gas sensor — analog',       icon: Wind },
   { id: 'servo', label: 'Servos',         sub: 'Pan GPIO27 · Tilt GPIO22',  icon: Wrench },
-  { id: 'pump',  label: 'Pump + Relay',   sub: 'GPIO17 → HW-482 → 12V',    icon: Zap },
+  { id: 'pump',  label: 'Pump + Relay',   sub: 'GPIO17 → HW-482 → 12 V',   icon: Zap },
   { id: 'cam',   label: 'IMX500',         sub: 'CSI ribbon — no GPIO',      icon: Camera },
 ] as const;
 
 const WIRE_TABLE: Record<string, { from: string; to: string; color: string; label: string }[]> = {
   atx: [
-    { color: '#8c0000', label: '5V (dark red)',    from: 'ATX 5V rail',   to: 'Pi Pin 2+4, Servo VCC, Relay VCC, MQ-2 H+A' },
-    { color: '#ad6a38', label: '3.3V (orange)',    from: 'ATX 3.3V rail', to: 'AMG8833 VIN, ADS1115 VDD' },
-    { color: '#000000', label: 'GND (black)',       from: 'ATX GND',       to: 'All component grounds' },
+    { color: '#cc1414', label: '5 V (red)',        from: 'ATX 5 V rail',  to: 'Pi Pin 2+4, Servo VCC, Relay VCC, MQ-2 H+A' },
+    { color: '#ef6100', label: '3.3 V (orange)',   from: 'ATX 3.3 V rail',to: 'AMG8833 VIN, ADS1115 VDD' },
+    { color: '#fff800', label: '12 V (yellow)',    from: 'ATX 12 V rail', to: 'Relay COM → pump' },
+    { color: '#404040', label: 'GND (grey)',       from: 'ATX GND',       to: 'All component grounds' },
   ],
   pi: [
-    { color: '#00a527', label: 'SDA — GPIO2 (Pin 3)',  from: 'Pi GPIO2',  to: 'Breadboard SDA bus → AMG8833 + ADS1115' },
-    { color: '#d6d63a', label: 'SCL — GPIO3 (Pin 5)',  from: 'Pi GPIO3',  to: 'Breadboard SCL bus → AMG8833 + ADS1115' },
-    { color: '#7a3a73', label: 'GPIO17 (Pin 11)',       from: 'Pi GPIO17', to: 'Relay IN pin (pump control)' },
-    { color: '#1b5bb3', label: 'GPIO27 (Pin 13)',       from: 'Pi GPIO27', to: 'Breadboard → Pan servo signal' },
-    { color: '#1b5bb3', label: 'GPIO22 (Pin 15)',       from: 'Pi GPIO22', to: 'Breadboard → Tilt servo signal' },
-    { color: '#8c0000', label: '5V (Pin 2+4)',          from: 'ATX 5V',    to: 'Pi power input' },
-    { color: '#000000', label: 'GND (Pin 6+9)',         from: 'ATX GND',   to: 'Pi ground' },
+    { color: '#25cc35', label: 'SDA — GPIO2 (Pin 3)',  from: 'Pi GPIO2',  to: 'Breadboard SDA bus → AMG8833 + ADS1115' },
+    { color: '#fff800', label: 'SCL — GPIO3 (Pin 5)',  from: 'Pi GPIO3',  to: 'Breadboard SCL bus → AMG8833 + ADS1115' },
+    { color: '#ab58a2', label: 'GPIO17 (Pin 11)',       from: 'Pi GPIO17', to: 'Relay IN pin (pump control)' },
+    { color: '#418dd9', label: 'GPIO27 (Pin 13)',       from: 'Pi GPIO27', to: 'Breadboard → Pan servo signal' },
+    { color: '#418dd9', label: 'GPIO22 (Pin 15)',       from: 'Pi GPIO22', to: 'Breadboard → Tilt servo signal' },
+    { color: '#cc1414', label: '5 V (Pin 2+4)',         from: 'ATX 5 V',   to: 'Pi power input' },
+    { color: '#404040', label: 'GND (Pin 6+9)',         from: 'ATX GND',   to: 'Pi ground' },
   ],
   amg: [
-    { color: '#ad6a38', label: 'VIN → 3.3V',   from: 'ATX 3.3V',     to: 'AMG8833 VIN' },
-    { color: '#000000', label: 'GND',           from: 'ATX GND',      to: 'AMG8833 GND' },
-    { color: '#d6d63a', label: 'SCL → row 38', from: 'AMG8833 SCL',  to: 'Breadboard SCL bus (shared with ADS1115 + Pi)' },
-    { color: '#00a527', label: 'SDA → row 36', from: 'AMG8833 SDA',  to: 'Breadboard SDA bus (shared with ADS1115 + Pi)' },
+    { color: '#cc1414', label: 'VIN → 5 V',    from: 'ATX 5 V',      to: 'AMG8833 VIN' },
+    { color: '#404040', label: 'GND',           from: 'ATX GND',      to: 'AMG8833 GND' },
+    { color: '#fff800', label: 'SCL → row 37',  from: 'AMG8833 SCL',  to: 'Breadboard SCL bus (shared with ADS1115 + Pi)' },
+    { color: '#25cc35', label: 'SDA → row 36',  from: 'AMG8833 SDA',  to: 'Breadboard SDA bus (shared with ADS1115 + Pi)' },
   ],
   ads: [
-    { color: '#ad6a38', label: 'VDD → 3.3V',    from: 'ATX 3.3V',    to: 'ADS1115 VDD' },
-    { color: '#000000', label: 'GND',            from: 'ATX GND',     to: 'ADS1115 GND' },
-    { color: '#d6d63a', label: 'SCL → row 38',  from: 'ADS1115 SCL', to: 'Breadboard SCL bus (shared with AMG8833 + Pi)' },
-    { color: '#00a527', label: 'SDA → row 36',  from: 'ADS1115 SDA', to: 'Breadboard SDA bus (shared with AMG8833 + Pi)' },
-    { color: '#000000', label: 'ADDR → GND',    from: 'ADS1115 ADDR',to: 'GND → I2C address 0x48' },
-    { color: '#6c2710', label: 'A0 ← divider',  from: 'Voltage divider junction', to: 'ADS1115 A0 (MQ-2 analog reading)' },
+    { color: '#cc1414', label: 'VDD → 5 V',     from: 'ATX 5 V',     to: 'ADS1115 VDD' },
+    { color: '#404040', label: 'GND',            from: 'ATX GND',     to: 'ADS1115 GND + ADDR → 0x48' },
+    { color: '#fff800', label: 'SCL → row 37',   from: 'ADS1115 SCL', to: 'Breadboard SCL bus (shared with AMG8833 + Pi)' },
+    { color: '#25cc35', label: 'SDA → row 36',   from: 'ADS1115 SDA', to: 'Breadboard SDA bus (shared with AMG8833 + Pi)' },
+    { color: '#8c3b00', label: 'A0 ← divider',   from: 'Voltage divider junction', to: 'ADS1115 A0 (MQ-2 analog reading)' },
   ],
   mq2: [
-    { color: '#8c0000', label: 'H + A → 5V',    from: 'ATX 5V',         to: 'MQ-2 H pins (heater) + A pins' },
-    { color: '#000000', label: 'B → GND',        from: 'MQ-2 B pin',     to: 'Resistor → GND (voltage divider)' },
-    { color: '#6c2710', label: 'Divider → A0',   from: 'Resistor junction', to: 'ADS1115 A0' },
+    { color: '#cc1414', label: 'H + A → 5 V',     from: 'ATX 5 V',          to: 'MQ-2 H pins (heater) + A pins' },
+    { color: '#404040', label: 'B → GND',          from: 'MQ-2 B pin',       to: 'Resistor → GND (voltage divider)' },
+    { color: '#8c3b00', label: 'Divider → A0',     from: 'Resistor junction', to: 'ADS1115 A0' },
+    { color: '#ffffff', label: 'Heater (white)',    from: 'MQ-2 heater',      to: 'Breadboard power rail' },
   ],
   servo: [
-    { color: '#8c0000', label: 'Red → 5V',          from: 'ATX 5V',    to: 'Servo 1 + 2 VCC' },
-    { color: '#000000', label: 'Black → GND',        from: 'ATX GND',   to: 'Servo 1 + 2 GND' },
-    { color: '#ffff00', label: 'Yellow signal wire', from: 'Servo body', to: 'Breadboard signal row' },
-    { color: '#1b5bb3', label: 'Blue → GPIO27',      from: 'Breadboard row', to: 'Pi GPIO27 (pan servo)' },
-    { color: '#1b5bb3', label: 'Blue → GPIO22',      from: 'Breadboard row', to: 'Pi GPIO22 (tilt servo)' },
+    { color: '#cc1414', label: 'Red → 5 V',          from: 'ATX 5 V',       to: 'Servo 1 + 2 VCC' },
+    { color: '#404040', label: 'GND (grey)',          from: 'ATX GND',       to: 'Servo 1 + 2 GND' },
+    { color: '#418dd9', label: 'Blue → GPIO27/22',    from: 'Breadboard',    to: 'Pi GPIO27 (pan) + GPIO22 (tilt)' },
   ],
   pump: [
-    { color: '#7a3a73', label: 'Purple → GPIO17',  from: 'Pi GPIO17',  to: 'HW-482 relay IN' },
-    { color: '#8c0000', label: 'VCC → 5V',         from: 'ATX 5V',    to: 'Relay VCC' },
-    { color: '#000000', label: 'GND',              from: 'ATX GND',   to: 'Relay GND' },
-    { color: '#999999', label: 'NO → pump +',      from: 'Relay NO',  to: 'Pump positive terminal (12V switched)' },
-    { color: '#000000', label: 'COM → 12V',        from: 'ATX 12V',   to: 'Relay COM' },
+    { color: '#ab58a2', label: 'Purple → GPIO17', from: 'Pi GPIO17',  to: 'HW-482 relay IN' },
+    { color: '#cc1414', label: 'VCC → 5 V',       from: 'ATX 5 V',   to: 'Relay VCC' },
+    { color: '#404040', label: 'GND',              from: 'ATX GND',   to: 'Relay GND' },
+    { color: '#fff800', label: 'COM → 12 V',      from: 'ATX 12 V',  to: 'Relay COM → pump +' },
+    { color: '#ef6100', label: 'D4 signal',        from: 'Pi',        to: 'Relay D4 (control)' },
   ],
   cam: [
     { color: '#888888', label: 'CSI ribbon', from: 'IMX500 CSI connector', to: 'Pi 5 CAM0 port — no GPIO wires' },
@@ -119,32 +132,62 @@ export default function WiringPage() {
     const svgEl = svgContainerRef.current.querySelector('svg');
     if (!svgEl) return;
 
+    const allGroups = svgEl.querySelectorAll<HTMLElement>('g[partID]');
+    const allWirePaths = svgEl.querySelectorAll<HTMLElement>('path[stroke], line[stroke]');
+
+    // ── Nothing selected → reset everything ──
     if (!active) {
-      svgEl.querySelectorAll<HTMLElement>('path, line, g[partID]').forEach(el => {
+      allGroups.forEach(el => {
         el.style.opacity = '1';
+        el.style.transition = 'opacity 0.25s ease';
+      });
+      allWirePaths.forEach(el => {
+        el.style.opacity = '';
         el.style.filter = '';
-        el.style.transition = 'opacity 0.2s, filter 0.2s';
+        el.style.transition = 'opacity 0.25s ease';
       });
       return;
     }
 
+    // ── Component selected → dim everything, then brighten matches ──
     const activeColors = new Set((COMPONENT_COLORS[active] || []).map(c => c.toLowerCase()));
 
-    svgEl.querySelectorAll<HTMLElement>('path[stroke], line[stroke]').forEach(el => {
-      const stroke = (el.getAttribute('stroke') || '').toLowerCase();
-      const opacity = el.getAttribute('opacity') || '1';
-      // skip the green fuzzy connector dots (opacity 0.2)
-      if (parseFloat(opacity) < 0.5) return;
-      const isActive = activeColors.has(stroke);
-      el.style.transition = 'opacity 0.2s, filter 0.2s';
-      el.style.opacity = isActive ? '1' : '0.06';
-      el.style.filter = isActive ? `drop-shadow(0 0 3px ${stroke}) drop-shadow(0 0 6px ${stroke})` : '';
+    // 1. Dim/brighten component body groups by partID
+    allGroups.forEach(el => {
+      const pid = el.getAttribute('partID') || '';
+      const owner = PARTID_MAP[pid];
+      el.style.transition = 'opacity 0.25s ease';
+
+      if (owner === '_breadboard') {
+        el.style.opacity = '0.35';
+      } else if (owner === active) {
+        el.style.opacity = '1';
+      } else if (owner) {
+        // Known component, not selected
+        el.style.opacity = '0.1';
+      } else {
+        // Wire group or unknown — check children for matching stroke
+        const childPaths = el.querySelectorAll('path[stroke], line[stroke]');
+        let hasMatch = false;
+        childPaths.forEach(p => {
+          const s = (p.getAttribute('stroke') || '').toLowerCase();
+          if (activeColors.has(s)) hasMatch = true;
+        });
+        el.style.opacity = hasMatch ? '1' : '0.08';
+      }
     });
 
-    // Dim component bodies
-    svgEl.querySelectorAll<HTMLElement>('g[partID]').forEach(el => {
-      el.style.transition = 'opacity 0.2s';
-      el.style.opacity = '0.2';
+    // 2. Handle paths/lines NOT inside a partID group (loose elements)
+    allWirePaths.forEach(el => {
+      // Skip if inside a partID group (already handled above)
+      if (el.closest('g[partID]')) return;
+      const stroke = (el.getAttribute('stroke') || '').toLowerCase();
+      const svgOpacity = el.getAttribute('opacity') || '1';
+      if (parseFloat(svgOpacity) < 0.5) return; // skip decorative dots
+      const isActive = activeColors.has(stroke);
+      el.style.transition = 'opacity 0.25s ease';
+      el.style.opacity = isActive ? '1' : '0.08';
+      el.style.filter = '';
     });
   }, [active, svgLoaded]);
 
@@ -214,7 +257,7 @@ export default function WiringPage() {
                 <tr key={i} style={{ borderTop: '1px solid var(--color-border)' }}>
                   <td style={{ padding: '8px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 3, background: w.color, border: w.color === '#000000' ? '1px solid #555' : 'none', flexShrink: 0 }} />
+                      <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 3, background: w.color, border: w.color === '#404040' || w.color === '#000000' ? '1px solid #777' : w.color === '#ffffff' ? '1px solid #ccc' : 'none', flexShrink: 0 }} />
                       <span>{w.label}</span>
                     </div>
                   </td>
