@@ -1,17 +1,40 @@
 // src/app/project/[id]/camera/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import TopBar from '@/components/TopBar';
-import { getCameraFeedUrl, getCameraSnapshotUrl, toggleCamera, getState } from '@/lib/api';
+import { getCameraSnapshotUrl, toggleCamera, getState } from '@/lib/api';
 import { Camera, Download, Power, RefreshCw } from 'lucide-react';
 
+const POLL_MS = 150; // snapshot poll interval — works through any proxy/tunnel
+
 export default function CameraPage() {
-  const [active, setActive] = useState(false);
+  const [active, setActive]   = useState(false);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [feedKey, setFeedKey] = useState(0);
+  const [error, setError]     = useState<string | null>(null);
+  const [frameSrc, setFrameSrc] = useState<string>('');
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // start/stop polling based on active state
+  useEffect(() => {
+    if (active) {
+      // poll immediately, then on interval
+      setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
+      intervalRef.current = setInterval(() => {
+        setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
+      }, POLL_MS);
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setFrameSrc('');
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [active]);
 
   useEffect(() => {
     getState()
@@ -26,7 +49,6 @@ export default function CameraPage() {
     try {
       await toggleCamera(!active);
       setActive(v => !v);
-      setFeedKey(k => k + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Toggle failed');
     } finally {
@@ -36,14 +58,14 @@ export default function CameraPage() {
 
   const handleSnapshot = () => {
     const a = document.createElement('a');
-    a.href = getCameraSnapshotUrl();
+    a.href = `${getCameraSnapshotUrl()}?t=${Date.now()}`;
     a.download = `snapshot_${Date.now()}.jpg`;
     a.click();
   };
 
   return (
     <div>
-      <TopBar title="Camera feed" subtitle="Live MJPEG stream from the Pi camera">
+      <TopBar title="Camera feed" subtitle="Live feed from the Pi camera">
         <button
           onClick={handleToggle}
           disabled={toggling || loading}
@@ -86,23 +108,22 @@ export default function CameraPage() {
           <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              key={feedKey}
-              src={getCameraFeedUrl()}
+              src={frameSrc}
               alt="Live camera feed"
               className="w-full block"
               style={{ minHeight: 400, background: 'var(--bg-elevated)', objectFit: 'contain' }}
-              onError={() => setError('Camera stream unavailable — ensure the Pi is online and the camera has started.')}
+              onError={() => setError('No frame available — ensure the Pi camera has started.')}
             />
             <div
               className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-full"
               style={{ background: 'rgba(0,0,0,0.65)' }}
             >
               <span className="status-dot danger" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#fff' }}>Live · 10 fps</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#fff' }}>Live · {Math.round(1000 / POLL_MS)} fps</span>
             </div>
             <button
-              onClick={() => setFeedKey(k => k + 1)}
-              title="Reload stream"
+              onClick={() => setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`)}
+              title="Reload frame"
               className="absolute top-3 right-3 p-2 rounded-lg cursor-pointer border-none"
               style={{ background: 'rgba(0,0,0,0.65)', color: '#fff' }}
             >
@@ -123,7 +144,7 @@ export default function CameraPage() {
 
       {active && (
         <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-          Streaming MJPEG directly from the Pi&apos;s VisionFuser. Use Snapshot to download the latest frame.
+          Polling snapshot from Pi every {POLL_MS}ms. Works over local network and tunnel.
         </p>
       )}
     </div>
