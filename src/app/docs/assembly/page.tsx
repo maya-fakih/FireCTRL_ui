@@ -40,15 +40,33 @@ export default function AssemblyPage() {
     let mounted = true;
 
     const loadThree = async () => {
-      // Use dynamic ES module import — GLTFLoader is bundled with three via esm.sh
-      const THREE_MOD = await import('https://esm.sh/three@0.128.0' as string) as unknown;
-      const { GLTFLoader } = await import('https://esm.sh/three@0.128.0/examples/jsm/loaders/GLTFLoader.js' as string) as { GLTFLoader: new () => { load: (url: string, onLoad: (gltf: { scene: unknown }) => void, onProgress: () => void, onError: () => void) => void } };
-      (window as unknown as { THREE: unknown; GLTFLoader: unknown }).THREE = THREE_MOD;
-      (window as unknown as { THREE: unknown; GLTFLoader: unknown; _GLTFLoader: unknown })._GLTFLoader = GLTFLoader;
+      if (!(window as unknown as { THREE?: unknown }).THREE) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+          s.onload = () => resolve();
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+        s.onload = () => resolve();
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/pmrem/PMREMGenerator.js';
+        s.onload = () => resolve();
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
 
       if (!mounted || !mountRef.current) return;
 
-      const THREE = (window as unknown as { THREE: { [key: string]: unknown } }).THREE as { [key: string]: unknown };
+      const THREE = (window as unknown as { THREE: { [key: string]: unknown } }).THREE;
       const W = mountRef.current.clientWidth;
       const H = mountRef.current.clientHeight;
 
@@ -131,8 +149,7 @@ export default function AssemblyPage() {
       scene.add(rim);
 
       // Load GLB
-      const GLTFLoader = (window as unknown as { _GLTFLoader: new () => { load: (url: string, onLoad: (gltf: { scene: unknown }) => void, onProgress: () => void, onError: () => void) => void } })._GLTFLoader;
-      const loader = new GLTFLoader();
+      const loader = new ((THREE as { GLTFLoader: new () => { load: (url: string, onLoad: (gltf: { scene: unknown }) => void, onProgress: () => void, onError: () => void) => void } }).GLTFLoader)();
       loader.load(
         '/robot_assembly.glb',
         (gltf: { scene: unknown }) => {
