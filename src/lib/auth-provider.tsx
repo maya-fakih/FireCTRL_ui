@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data } = supabase.auth.onAuthStateChange((event, session) => {
           const currentUser = session?.user ?? null;
           setUser(currentUser);
-          if (event === 'SIGNED_IN' && currentUser) router.replace('/projects');
+          if (event === 'SIGNED_IN' && currentUser && PUBLIC_ROUTES.includes(pathname)) router.replace('/projects');
           if (event === 'SIGNED_OUT') router.replace('/login');
         });
         subscription = data.subscription;

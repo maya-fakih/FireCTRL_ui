@@ -49,20 +49,15 @@ export default function AssemblyPage() {
           document.head.appendChild(s);
         });
       }
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
-        s.onload = () => resolve();
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/pmrem/PMREMGenerator.js';
-        s.onload = () => resolve();
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
+      if (!(window as unknown as { THREE?: { GLTFLoader?: unknown } }).THREE?.GLTFLoader) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+          s.onload = () => resolve();
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
 
       if (!mounted || !mountRef.current) return;
 
@@ -70,16 +65,21 @@ export default function AssemblyPage() {
       const W = mountRef.current.clientWidth;
       const H = mountRef.current.clientHeight;
 
-      // Scene — background matches theme
-      const scene = new (THREE.Scene as new () => { background: unknown; environment: unknown; add: (obj: unknown) => void })();
-      const isDark = document.documentElement.classList.contains('dark')
-        || document.documentElement.getAttribute('data-theme') === 'dark'
+      // Scene — background matches the app theme
+      const scene = new (THREE.Scene as new () => {
+        background: unknown;
+        add: (obj: unknown) => void;
+      })();
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
+        || document.documentElement.classList.contains('dark')
         || window.matchMedia('(prefers-color-scheme: dark)').matches;
-      (scene as { background: unknown }).background = new (THREE.Color as new (c: number) => unknown)(isDark ? 0x1e1e1e : 0xf0eeeb);
+      (scene as { background: unknown }).background = new (THREE.Color as new (c: number) => unknown)(isDark ? 0x1a1a1a : 0xf5f5f0);
       sceneRef.current = scene;
 
       // Camera
-      const camera = new (THREE.PerspectiveCamera as new (fov: number, aspect: number, near: number, far: number) => unknown)(45, W / H, 0.01, 1000);
+      const camera = new (THREE.PerspectiveCamera as new (fov: number, aspect: number, near: number, far: number) => unknown)(
+        45, W / H, 0.01, 1000
+      );
       cameraRef.current = camera;
       updateCamera();
 
@@ -92,60 +92,27 @@ export default function AssemblyPage() {
         toneMappingExposure: number;
         render: (s: unknown, c: unknown) => void;
         domElement: HTMLCanvasElement;
-        outputEncoding: unknown;
       })({ antialias: true, alpha: false });
       renderer.setSize(W, H);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.shadowMap.enabled = true;
       renderer.toneMapping = (THREE as { ACESFilmicToneMapping: unknown }).ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.4;
-      renderer.outputEncoding = (THREE as { sRGBEncoding: unknown }).sRGBEncoding;
+      renderer.toneMappingExposure = 1.2;
       mountRef.current.appendChild(renderer.domElement);
       rendererRef.current = renderer;
 
-      // ── IBL environment — this is what makes metallic materials look real ──
-      // Generate a neutral studio environment using PMREMGenerator
-      const pmremGenerator = new ((THREE as { PMREMGenerator: new (r: unknown) => {
-        compileEquirectangularShader: () => void;
-        fromScene: (s: unknown, blur?: number) => { texture: unknown };
-        dispose: () => void;
-      } }).PMREMGenerator)(renderer);
-      pmremGenerator.compileEquirectangularShader();
-
-      // Use RoomEnvironment-style neutral grey scene for IBL
-      const envScene = new (THREE.Scene as new () => { background: unknown; add: (obj: unknown) => void })();
-      // Add some coloured planes to simulate a studio environment
-      const addPlane = (color: number, x: number, y: number, z: number, rx: number, ry: number) => {
-        const geo = new (THREE.PlaneGeometry as new (w: number, h: number) => unknown)(20, 20);
-        const mat = new (THREE.MeshBasicMaterial as new (opts: unknown) => unknown)({ color, side: (THREE as { DoubleSide: unknown }).DoubleSide });
-        const mesh = new (THREE.Mesh as new (g: unknown, m: unknown) => { rotation: { x: number; y: number }; position: { set: (x: number, y: number, z: number) => void } })(geo, mat);
-        mesh.rotation.x = rx;
-        mesh.rotation.y = ry;
-        mesh.position.set(x, y, z);
-        (envScene as { add: (o: unknown) => void }).add(mesh);
-      };
-      addPlane(0xffffff, 0, 0, -10, 0, 0);     // back — white
-      addPlane(0xdddddd, -10, 0, 0, 0, Math.PI / 2); // left — light grey
-      addPlane(0xdddddd, 10, 0, 0, 0, -Math.PI / 2); // right
-      addPlane(0xffffff, 0, 10, 0, Math.PI / 2, 0);  // top — white
-      addPlane(0xbbbbbb, 0, -10, 0, -Math.PI / 2, 0); // bottom — grey
-      addPlane(0xeeeeee, 0, 0, 10, 0, Math.PI); // front
-      const envTexture = pmremGenerator.fromScene(envScene, 0.04).texture;
-      (scene as { environment: unknown }).environment = envTexture;
-      pmremGenerator.dispose();
-
-      // Lighting — bright key + soft fills for shadow depth
-      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0xffffff, 0.6);
+      // Lighting — bright and neutral so model shows its real colors
+      const ambient = new (THREE.AmbientLight as new (color: number, intensity: number) => unknown)(0xffffff, 1.2);
       scene.add(ambient);
-      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xffffff, 2.0);
-      key.position.set(5, 8, 5);
+      const key = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void }; castShadow: boolean })(0xffffff, 1.5);
+      key.position.set(4, 6, 5);
       key.castShadow = true;
       scene.add(key);
-      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xfff5ee, 0.8);
-      fill.position.set(-5, 3, -3);
+      const fill = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.8);
+      fill.position.set(-4, 1, -3);
       scene.add(fill);
-      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.5);
-      rim.position.set(0, -4, -6);
+      const rim = new (THREE.DirectionalLight as new (color: number, intensity: number) => { position: { set: (x: number, y: number, z: number) => void } })(0xffffff, 0.4);
+      rim.position.set(0, -3, -5);
       scene.add(rim);
 
       // Load GLB
