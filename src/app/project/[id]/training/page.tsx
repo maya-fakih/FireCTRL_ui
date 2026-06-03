@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import { getTrainingStats, triggerTraining, getTrainStatus, toggleCamera, getCameraSnapshotUrl } from '@/lib/api';
 import type { TrainingStats, TrainJob } from '@/lib/types';
-import { Brain, Play, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Brain, Play, CheckCircle, AlertTriangle, RefreshCw, FlipVertical } from 'lucide-react';
 
 const DANGER_COLORS: Record<number, string> = {
   0: 'var(--text-muted)', 1: 'var(--success-text)', 2: '#5A9E6F',
@@ -21,6 +21,7 @@ export default function TrainingPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const camPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [frameSrc, setFrameSrc] = useState<string>('');
+  const [flipped, setFlipped] = useState(false);
 
   const loadStats = async () => {
     try {
@@ -79,6 +80,10 @@ export default function TrainingPage() {
   return (
     <div>
       <TopBar title="Training" subtitle="Retrain the XGBoost model on labeled predictions">
+        <button onClick={() => setFlipped(f => !f)} className="btn btn-ghost" title="Flip image vertically">
+          <FlipVertical size={14} />
+          {flipped ? 'Unflip' : 'Flip vertical'}
+        </button>
         <button onClick={loadStats} className="btn btn-ghost"><RefreshCw size={14} /> Refresh</button>
         <button onClick={handleTrain} disabled={!canTrain} className="btn btn-primary" style={{ opacity: canTrain ? 1 : 0.6 }}>
           <Play size={14} /> {training ? 'Training...' : 'Start training'}
@@ -125,7 +130,7 @@ export default function TrainingPage() {
             <div className="text-[10px] uppercase tracking-wider font-semibold p-4 pb-2" style={{ color: 'var(--text-muted)' }}>Live camera</div>
             {frameSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={frameSrc} alt="Live camera" className="w-full block" style={{ maxHeight: 360, objectFit: 'contain', background: 'var(--bg-elevated)' }} onError={() => {}} />
+              <img src={frameSrc} alt="Live camera" className="w-full block" style={{ maxHeight: 360, objectFit: 'contain', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }} onError={() => {}} />
             ) : (
               <div className="flex items-center justify-center py-16" style={{ color: 'var(--text-muted)' }}>Starting camera...</div>
             )}
