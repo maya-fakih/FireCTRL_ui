@@ -3,79 +3,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import TopBar from '@/components/TopBar';
-import { getCameraSnapshotUrl, toggleCamera, getState } from '@/lib/api';
-import { Camera, Download, Power, RefreshCw, Loader2 } from 'lucide-react';
-
-const POLL_MS = 150; // snapshot poll interval — works through any proxy/tunnel
+import { getCameraFeedUrl, getCameraSnapshotUrl, toggleCamera, getState } from '@/lib/api';
+import { Camera, Download, Power, FlipVertical, Loader2 } from 'lucide-react';
 
 export default function CameraPage() {
-  const [active, setActive]     = useState(false);
-  const [loading, setLoading]   = useState(true);
-  const [toggling, setToggling] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [frameSrc, setFrameSrc] = useState<string>('');
-  const [flipped, setFlipped]   = useState(false);
-  // true while camera is active but stream.jpg hasn't appeared yet
+  const [active, setActive]       = useState(false);
+  const [loading, setLoading]     = useState(true);
+  const [toggling, setToggling]   = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [flipped, setFlipped]     = useState(false);
   const [warmingUp, setWarmingUp] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Fetch the snapshot URL and check HTTP status before setting frameSrc.
-  // This lets us distinguish:
-  //   503 → camera warming up (show spinner, keep polling, no error toast)
-  //   200 → frame ready       (display image)
-  //   other → real error      (show error toast, stop polling)
-  const fetchFrame = async () => {
-    const url = `${getCameraSnapshotUrl()}?t=${Date.now()}`;
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        // Frame is ready — clear warming-up state and show the image.
-        setWarmingUp(false);
-        setError(null);
-        setFrameSrc(url);
-      } else if (res.status === 503) {
-        // Camera is on but hasn't written a frame yet — show spinner, keep polling.
-        setWarmingUp(true);
-        setError(null);
-      } else if (res.status === 403) {
-        // Backend says camera is off — stop polling and sync UI state.
-        setActive(false);
-        setWarmingUp(false);
-        setFrameSrc('');
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      } else {
-        setWarmingUp(false);
-        setError(`Camera error (HTTP ${res.status}) — check Pi logs.`);
-      }
-    } catch {
-      // Network error (Pi unreachable) — show once, keep polling silently.
-      setError('Could not reach Pi — check your connection.');
-    }
-  };
-
-  // start/stop polling based on active state
-  useEffect(() => {
-    if (active) {
-      setWarmingUp(true);   // assume warm-up until first 200
-      fetchFrame();         // poll immediately
-      intervalRef.current = setInterval(fetchFrame, POLL_MS);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      setFrameSrc('');
-      setWarmingUp(false);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
-
+  // ── Sync initial state from Pi ──────────────────────────────────────
   useEffect(() => {
     getState()
       .then(s => setActive(s.camera_feed_active))
@@ -83,16 +23,34 @@ export default function CameraPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // ── Toggle camera on/off ────────────────────────────────────────────
   const handleToggle = async () => {
     setToggling(true);
     setError(null);
     try {
-      await toggleCamera(!active);
-      setActive(v => !v);
+      const next = !active;
+      await toggleCamera(next);
+      setActive(next);
+      if (next) {
+        setWarmingUp(true);
+      } else {
+        setWarmingUp(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Toggle failed');
     } finally {
       setToggling(false);
+    }
+  };
+
+  // When the <img> loads its first frame, the stream is live
+  const handleImgLoad = () => setWarmingUp(false);
+
+  // If the MJPEG stream errors (Pi unreachable, feed closed), show error
+  const handleImgError = () => {
+    if (active) {
+      setError('Camera feed disconnected — try toggling off and on.');
+      setWarmingUp(false);
     }
   };
 
@@ -102,6 +60,10 @@ export default function CameraPage() {
     a.download = `snapshot_${Date.now()}.jpg`;
     a.click();
   };
+
+  // The MJPEG feed URL — browser natively handles the multipart stream.
+  // One <img src> = one long-lived connection. No polling, no intervals.
+  const feedUrl = getCameraFeedUrl();
 
   return (
     <div>
@@ -113,7 +75,7 @@ export default function CameraPage() {
           style={{ opacity: (!active || warmingUp) ? 0.5 : 1 }}
           title="Flip image vertically"
         >
-          <RefreshCw size={14} style={{ transform: 'scaleX(-1)' }} />
+          <FlipVertical size={14} />
           {flipped ? 'Unflip' : 'Flip vertical'}
         </button>
         <button
@@ -156,10 +118,9 @@ export default function CameraPage() {
           </div>
         ) : active ? (
           <div className="relative">
-            {warmingUp ? (
-              /* Camera toggled on, waiting for first frame */
+            {warmingUp && (
               <div
-                className="flex flex-col items-center justify-center py-24"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center"
                 style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', minHeight: 400 }}
               >
                 <Loader2 size={40} className="mb-3 animate-spin" style={{ color: 'var(--accent)' }} />
@@ -170,37 +131,33 @@ export default function CameraPage() {
                   Waiting for first frame from the Pi
                 </p>
               </div>
-            ) : (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={frameSrc}
-                  alt="Live camera feed"
-                  className="w-full block"
-                  style={{
-                    minHeight: 400,
-                    background: 'var(--bg-elevated)',
-                    objectFit: 'contain',
-                    transform: flipped ? 'scaleY(-1)' : 'none',
-                    transition: 'transform 0.2s ease',
-                  }}
-                />
-                <div
-                  className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-full"
-                  style={{ background: 'rgba(0,0,0,0.65)' }}
-                >
-                  <span className="status-dot danger" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#fff' }}>Live · {Math.round(1000 / POLL_MS)} fps</span>
-                </div>
-                <button
-                  onClick={fetchFrame}
-                  title="Reload frame"
-                  className="absolute top-3 right-3 p-2 rounded-lg cursor-pointer border-none"
-                  style={{ background: 'rgba(0,0,0,0.65)', color: '#fff' }}
-                >
-                  <RefreshCw size={13} />
-                </button>
-              </>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={imgRef}
+              src={feedUrl}
+              alt="Live camera feed"
+              className="w-full block"
+              onLoad={handleImgLoad}
+              onError={handleImgError}
+              style={{
+                minHeight: 400,
+                background: 'var(--bg-elevated)',
+                objectFit: 'contain',
+                transform: flipped ? 'scaleY(-1)' : 'none',
+                transition: 'transform 0.2s ease',
+              }}
+            />
+            {!warmingUp && (
+              <div
+                className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-full"
+                style={{ background: 'rgba(0,0,0,0.65)' }}
+              >
+                <span className="status-dot danger" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#fff' }}>
+                  Live · MJPEG
+                </span>
+              </div>
             )}
           </div>
         ) : (
@@ -217,7 +174,7 @@ export default function CameraPage() {
 
       {active && !warmingUp && (
         <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-          Polling snapshot from Pi every {POLL_MS}ms. Works over local network and tunnel.
+          MJPEG stream from Pi — single connection, no polling.
         </p>
       )}
     </div>
