@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import TopBar from '@/components/TopBar';
-import { getTrainingStats, triggerTraining, getTrainStatus } from '@/lib/api';
+import { getTrainingStats, triggerTraining, getTrainStatus, toggleCamera, getCameraSnapshotUrl } from '@/lib/api';
 import type { TrainingStats, TrainJob } from '@/lib/types';
 import { Brain, Play, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -19,6 +19,8 @@ export default function TrainingPage() {
   const [training, setTraining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const camPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [frameSrc, setFrameSrc] = useState<string>('');
 
   const loadStats = async () => {
     try {
@@ -32,9 +34,17 @@ export default function TrainingPage() {
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    toggleCamera(true).catch(() => {});
+    setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
+    camPollRef.current = setInterval(() => {
+      setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
+    }, 150);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (camPollRef.current) clearInterval(camPollRef.current);
+      toggleCamera(false).catch(() => {});
+    };
   }, []);
 
   const handleTrain = async () => {
@@ -111,6 +121,16 @@ export default function TrainingPage() {
         <div className="text-center py-16 pulse-soft" style={{ color: 'var(--text-muted)' }}>Loading stats...</div>
       ) : stats ? (
         <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-12 card overflow-hidden animate-in" style={{ minHeight: 300 }}>
+            <div className="text-[10px] uppercase tracking-wider font-semibold p-4 pb-2" style={{ color: 'var(--text-muted)' }}>Live camera</div>
+            {frameSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={frameSrc} alt="Live camera" className="w-full block" style={{ maxHeight: 360, objectFit: 'contain', background: 'var(--bg-elevated)' }} onError={() => {}} />
+            ) : (
+              <div className="flex items-center justify-center py-16" style={{ color: 'var(--text-muted)' }}>Starting camera...</div>
+            )}
+          </div>
+
           <div className="col-span-8 card p-6 animate-in">
             <div className="text-[10px] uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>Dataset overview</div>
             <div className="grid grid-cols-3 gap-4 mb-6">
