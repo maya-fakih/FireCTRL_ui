@@ -14,6 +14,7 @@ export default function CameraPage() {
   const [toggling, setToggling] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [frameSrc, setFrameSrc] = useState<string>('');
+  const [flipped, setFlipped]   = useState(false);
   // true while camera is active but stream.jpg hasn't appeared yet
   const [warmingUp, setWarmingUp] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -31,13 +32,20 @@ export default function CameraPage() {
         // Frame is ready — clear warming-up state and show the image.
         setWarmingUp(false);
         setError(null);
-        // Use the object URL so the <img> tag gets a fresh blob, not a stale
-        // browser-cached URL (the ?t= param handles cache-busting too).
         setFrameSrc(url);
       } else if (res.status === 503) {
         // Camera is on but hasn't written a frame yet — show spinner, keep polling.
         setWarmingUp(true);
         setError(null);
+      } else if (res.status === 403) {
+        // Backend says camera is off — stop polling and sync UI state.
+        setActive(false);
+        setWarmingUp(false);
+        setFrameSrc('');
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
       } else {
         setWarmingUp(false);
         setError(`Camera error (HTTP ${res.status}) — check Pi logs.`);
@@ -99,6 +107,16 @@ export default function CameraPage() {
     <div>
       <TopBar title="Camera feed" subtitle="Live feed from the Pi camera">
         <button
+          onClick={() => setFlipped(f => !f)}
+          disabled={!active || warmingUp}
+          className="btn btn-ghost"
+          style={{ opacity: (!active || warmingUp) ? 0.5 : 1 }}
+          title="Flip image vertically"
+        >
+          <RefreshCw size={14} style={{ transform: 'scaleX(-1)' }} />
+          {flipped ? 'Unflip' : 'Flip vertical'}
+        </button>
+        <button
           onClick={handleToggle}
           disabled={toggling || loading}
           className="btn btn-ghost"
@@ -159,7 +177,13 @@ export default function CameraPage() {
                   src={frameSrc}
                   alt="Live camera feed"
                   className="w-full block"
-                  style={{ minHeight: 400, background: 'var(--bg-elevated)', objectFit: 'contain' }}
+                  style={{
+                    minHeight: 400,
+                    background: 'var(--bg-elevated)',
+                    objectFit: 'contain',
+                    transform: flipped ? 'scaleY(-1)' : 'none',
+                    transition: 'transform 0.2s ease',
+                  }}
                 />
                 <div
                   className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-full"
