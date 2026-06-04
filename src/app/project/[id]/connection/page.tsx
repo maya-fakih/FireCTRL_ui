@@ -124,9 +124,15 @@ export default function ConnectionPage() {
 
         <div className="card p-5 animate-in" style={{ animationDelay: '100ms' }}>
           <div className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: 'var(--text-muted)' }}>How to connect</div>
-          <div className="flex flex-col gap-2 text-[12px]" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-            <p>Same network? Use the Pi&apos;s local IP: <code style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)', fontSize: 11 }}>http://192.168.x.x:5000</code></p>
-            <p>Remote access? Run <code style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)', fontSize: 11 }}>make tunnel</code> on the Pi and paste the Cloudflare URL here.</p>
+          <div className="flex flex-col gap-3 text-[12px]" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            <div>
+              <p className="mb-1"><strong style={{ color: 'var(--text-primary)' }}>Same network?</strong> Find the Pi&apos;s local IP — run this on the Pi:</p>
+              <code style={{ display: 'block', fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)', fontSize: 11, background: 'var(--bg-elevated)', padding: '8px 12px', borderRadius: 8 }}>hostname -I</code>
+              <p className="mt-1.5">Take the first address it prints and use <code style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)', fontSize: 11 }}>http://&lt;that-ip&gt;:5000</code></p>
+            </div>
+            <div>
+              <p className="mb-1"><strong style={{ color: 'var(--text-primary)' }}>Remote access?</strong> Run <code style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)', fontSize: 11 }}>make tunnel</code> on the Pi and paste the Cloudflare URL here.</p>
+            </div>
           </div>
         </div>
       </div>

@@ -123,6 +123,18 @@ export const getTrainingStats = () =>
 export const getCameraFeedUrl = () => `${API_BASE}/api/camera/feed`;
 export const getCameraSnapshotUrl = () => `${API_BASE}/api/camera/snapshot`;
 
+// ── Config ────────────────────────────────────────────────────────────
+// getConfig returns the full live config.json as held by the orchestrator.
+// updateConfig sends a flat dot-path → value map; the backend validates each
+// path already exists, writes the file, and RESTARTS all layers to apply.
+export const getConfig = () =>
+  request<Record<string, unknown>>('/api/config');
+
+export const updateConfig = (changes: Record<string, unknown>) =>
+  request<{ ok: boolean; applied: string[]; restarted: boolean }>('/api/config', {
+    method: 'POST', body: JSON.stringify({ changes }),
+  });
+
 // ── Health ────────────────────────────────────────────────────────────
 export const healthCheck = () =>
   request<{ status: string }>('/api/health');

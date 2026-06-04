@@ -154,7 +154,7 @@ export default function TrainingPage() {
             src={getCameraFeedUrl()}
             alt="Live camera"
             className="w-full block"
-            style={{ maxHeight: 340, objectFit: 'contain', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
+            style={{ height: 340, objectFit: 'cover', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
           />
 
           <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border-subtle)' }}>
