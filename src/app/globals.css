@@ -45,40 +45,39 @@
 
 /* ── Light Theme ────────────────────────────────────────────────────── */
 [data-theme='light'] {
-  --bg-primary:      #F5F0EB;
-  --bg-secondary:    #EDE7E0;
-  --bg-card:         #FFFFFF;
-  --bg-card-hover:   #FAF7F4;
-  --bg-elevated:     #F0EBE5;
+  --bg-primary:      #EDE0D4;
+  --bg-secondary:    #E4D5C7;
+  --bg-card:         #D9C9B8;
+  --bg-card-hover:   #D0BFA8;
+  --bg-elevated:     #CBB89F;
 
-  --border:          #DDD5CC;
-  --border-subtle:   #E8E2DB;
+  --border:          #B8A48E;
+  --border-subtle:   #C4B09A;
 
-  --text-primary:    #1A1714;
-  --text-secondary:  #6B6560;
-  --text-muted:      #9E9790;
+  --text-primary:    #120D0A;
+  --text-secondary:  #3D2D1F;
+  --text-muted:      #7A6252;
 
-  --accent:          #C05621;
-  --accent-hover:    #D4692E;
-  --accent-soft:     rgba(192, 86, 33, 0.10);
-  --accent-glow:     rgba(192, 86, 33, 0.20);
+  --accent:          #F06A3B;
+  --accent-hover:    #FF7A4A;
+  --accent-soft:     rgba(240, 106, 59, 0.15);
+  --accent-glow:     rgba(240, 106, 59, 0.30);
 
-  --success:         #2E7D5B;
+  --success:         #3A9E6F;
   --success-text:    #2E7D5B;
-  --success-soft:    rgba(46, 125, 91, 0.10);
+  --success-soft:    rgba(46, 125, 91, 0.12);
   --warning:         #B8860B;
-  --warning-soft:    rgba(184, 134, 11, 0.10);
-  --danger:          #B33025;
-  --danger-soft:     rgba(179, 48, 37, 0.08);
+  --warning-soft:    rgba(184, 134, 11, 0.12);
+  --danger:          #C0392B;
+  --danger-soft:     rgba(192, 57, 43, 0.10);
 
-  --sidebar-bg:      #EDE7E0;
+  --sidebar-bg:      #E4D5C7;
   --sidebar-active:  rgba(192, 86, 33, 0.10);
 
-  --shadow-sm:       0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md:       0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg:       0 8px 32px rgba(0,0,0,0.10);
+  --shadow-sm:       0 1px 3px rgba(0,0,0,0.10);
+  --shadow-md:       0 4px 12px rgba(0,0,0,0.15);
+  --shadow-lg:       0 8px 32px rgba(0,0,0,0.20);
 }
-
 /* ── Base ───────────────────────────────────────────────────────────── */
 
 * { box-sizing: border-box; }
