@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
   getTrainingStats, triggerTraining, getTrainStatus,
-  toggleCamera, getCameraSnapshotUrl,
+  getCameraFeedUrl,
   recordingStart, recordingStop, recordingPushLabel,
 } from '@/lib/api';
 import type { TrainingStats, TrainJob } from '@/lib/types';
@@ -31,7 +31,6 @@ export default function TrainingPage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [flipped, setFlipped]     = useState(false);
-  const [frameSrc, setFrameSrc]   = useState('');
 
   // Recording
   const [recording, setRecording]     = useState(false);
@@ -39,7 +38,6 @@ export default function TrainingPage() {
   const [dangerLevel, setDangerLevel] = useState<number>(1);
   const [eventId, setEventId]         = useState<number | null>(null);
 
-  const camPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stripRef   = useRef<HTMLDivElement>(null);
   const dragging   = useRef(false);
 
@@ -59,15 +57,6 @@ export default function TrainingPage() {
   // ── Camera (continuous poll) ────────────────────────────────────────
   useEffect(() => {
     loadStats();
-    toggleCamera(true).catch(() => {});
-    setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
-    camPollRef.current = setInterval(() => {
-      setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
-    }, 150);
-    return () => {
-      if (camPollRef.current) clearInterval(camPollRef.current);
-      toggleCamera(false).catch(() => {});
-    };
   }, [loadStats]);
 
   // ── Heat strip drag ─────────────────────────────────────────────────
@@ -137,9 +126,7 @@ export default function TrainingPage() {
         </button>
         <button
           onClick={() => router.push(`/project/${id}/dataset`)}
-          disabled={!stats || stats.labeled === 0}
           className="btn btn-primary"
-          style={{ opacity: !stats || stats.labeled === 0 ? 0.5 : 1 }}
         >
           <Play size={14} /> Review dataset
         </button>
@@ -162,18 +149,13 @@ export default function TrainingPage() {
             )}
           </div>
 
-          {frameSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={frameSrc}
-              alt="Live camera"
-              className="w-full block"
-              style={{ maxHeight: 340, objectFit: 'contain', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
-              onError={() => {}}
-            />
-          ) : (
-            <div className="flex items-center justify-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>Starting camera...</div>
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={getCameraFeedUrl()}
+            alt="Live camera"
+            className="w-full block"
+            style={{ maxHeight: 340, objectFit: 'contain', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
+          />
 
           <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border-subtle)' }}>
 
