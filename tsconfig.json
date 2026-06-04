@@ -13,13 +13,11 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
+    "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "ag-grid-react": ["./node_modules/ag-grid-react/dist/types/src/index.d.ts"],
+      "ag-grid-community": ["./node_modules/ag-grid-community/dist/types/main.d.ts"]
     }
   },
   "include": [

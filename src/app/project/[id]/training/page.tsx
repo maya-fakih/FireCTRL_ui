@@ -1,39 +1,62 @@
-// src/app/project/[id]/training/page.tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
-import { getTrainingStats, triggerTraining, getTrainStatus, toggleCamera, getCameraSnapshotUrl } from '@/lib/api';
+import {
+  getTrainingStats, triggerTraining, getTrainStatus,
+  toggleCamera, getCameraSnapshotUrl,
+  recordingStart, recordingStop, recordingPushLabel,
+} from '@/lib/api';
 import type { TrainingStats, TrainJob } from '@/lib/types';
-import { Brain, Play, CheckCircle, AlertTriangle, RefreshCw, FlipVertical } from 'lucide-react';
+import { Brain, Play, CheckCircle, AlertTriangle, RefreshCw, FlipVertical, Circle, Square } from 'lucide-react';
 
-const DANGER_COLORS: Record<number, string> = {
-  0: 'var(--text-muted)', 1: 'var(--success-text)', 2: '#5A9E6F',
-  3: 'var(--warning)', 4: '#D4692E', 5: 'var(--danger)',
+const LEVELS = [
+  { n: 1, name: 'Low',      color: '#639922' },
+  { n: 2, name: 'Guarded',  color: '#5DCAA5' },
+  { n: 3, name: 'Elevated', color: '#BA7517' },
+  { n: 4, name: 'High',     color: '#D85A30' },
+  { n: 5, name: 'Critical', color: '#E24B4A' },
+];
+
+const DIST_COLORS: Record<number, string> = {
+  1: '#639922', 2: '#5DCAA5', 3: '#BA7517', 4: '#D85A30', 5: '#E24B4A',
 };
 
 export default function TrainingPage() {
-  const [stats, setStats] = useState<TrainingStats | null>(null);
-  const [job, setJob] = useState<TrainJob | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [training, setTraining] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const camPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [frameSrc, setFrameSrc] = useState<string>('');
-  const [flipped, setFlipped] = useState(false);
+  const { id } = useParams<{ id: string }>();
+  const router  = useRouter();
 
-  const loadStats = async () => {
+  const [stats, setStats]         = useState<TrainingStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [flipped, setFlipped]     = useState(false);
+  const [frameSrc, setFrameSrc]   = useState('');
+
+  // Recording
+  const [recording, setRecording]     = useState(false);
+  const [recLoading, setRecLoading]   = useState(false);
+  const [dangerLevel, setDangerLevel] = useState<number>(1);
+  const [eventId, setEventId]         = useState<number | null>(null);
+
+  const camPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stripRef   = useRef<HTMLDivElement>(null);
+  const dragging   = useRef(false);
+
+  // ── Stats (manual refresh only) ────────────────────────────────────
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
     try {
       setStats(await getTrainingStats());
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load training stats');
+      setError(err instanceof Error ? err.message : 'Failed to load stats');
     } finally {
-      setLoading(false);
+      setStatsLoading(false);
     }
-  };
+  }, []);
 
+  // ── Camera (continuous poll) ────────────────────────────────────────
   useEffect(() => {
     loadStats();
     toggleCamera(true).catch(() => {});
@@ -42,51 +65,83 @@ export default function TrainingPage() {
       setFrameSrc(`${getCameraSnapshotUrl()}?t=${Date.now()}`);
     }, 150);
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
       if (camPollRef.current) clearInterval(camPollRef.current);
       toggleCamera(false).catch(() => {});
     };
+  }, [loadStats]);
+
+  // ── Heat strip drag ─────────────────────────────────────────────────
+  const levelFromX = useCallback((clientX: number) => {
+    const el = stripRef.current;
+    if (!el) return 1;
+    const rect = el.getBoundingClientRect();
+    const pct  = Math.max(0, Math.min(0.9999, (clientX - rect.left) / rect.width));
+    return Math.floor(pct * 5) + 1;
   }, []);
 
-  const handleTrain = async () => {
-    setTraining(true);
+  const pickLevel = useCallback((n: number) => {
+    setDangerLevel(n);
+    if (recording) recordingPushLabel(n).catch(() => {});
+  }, [recording]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      if (!dragging.current) return;
+      const x = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      pickLevel(levelFromX(x));
+    };
+    const onUp = () => { dragging.current = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove as EventListener, { passive: true });
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove as EventListener);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [levelFromX, pickLevel]);
+
+  // ── Recording toggle ────────────────────────────────────────────────
+  const handleRecordToggle = async () => {
+    setRecLoading(true);
     setError(null);
     try {
-      const res = await triggerTraining();
-      setJob({ job_id: res.job_id, status: 'running' });
-      pollRef.current = setInterval(async () => {
-        try {
-          const j = await getTrainStatus(res.job_id);
-          setJob(j);
-          if (j.status !== 'running') {
-            if (pollRef.current) clearInterval(pollRef.current);
-            setTraining(false);
-            await loadStats();
-          }
-        } catch {
-          if (pollRef.current) clearInterval(pollRef.current);
-          setTraining(false);
-        }
-      }, 2000);
+      if (recording) {
+        await recordingStop();
+        setRecording(false);
+        setEventId(null);
+        await loadStats();
+      } else {
+        const res = await recordingStart(true);
+        setEventId(res.event_id);
+        setRecording(true);
+        await recordingPushLabel(dangerLevel);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start training');
-      setTraining(false);
+      setError(err instanceof Error ? err.message : 'Recording error');
+    } finally {
+      setRecLoading(false);
     }
   };
 
-  const labeledPct = stats ? Math.round((stats.labeled / (stats.total || 1)) * 100) : 0;
-  const canTrain = !!stats && stats.labeled > 0 && !training;
+  const labeledPct  = stats ? Math.round((stats.labeled / (stats.total || 1)) * 100) : 0;
+  const activeLevel = LEVELS.find(l => l.n === dangerLevel) ?? LEVELS[0];
 
   return (
     <div>
-      <TopBar title="Training" subtitle="Retrain the XGBoost model on labeled predictions">
-        <button onClick={() => setFlipped(f => !f)} className="btn btn-ghost" title="Flip image vertically">
-          <FlipVertical size={14} />
-          {flipped ? 'Unflip' : 'Flip vertical'}
+      <TopBar title="Training" subtitle="Record labeled data and retrain the model">
+        <button onClick={loadStats} className="btn btn-ghost">
+          <RefreshCw size={14} /> Refresh stats
         </button>
-        <button onClick={loadStats} className="btn btn-ghost"><RefreshCw size={14} /> Refresh</button>
-        <button onClick={handleTrain} disabled={!canTrain} className="btn btn-primary" style={{ opacity: canTrain ? 1 : 0.6 }}>
-          <Play size={14} /> {training ? 'Training...' : 'Start training'}
+        <button
+          onClick={() => router.push(`/project/${id}/dataset`)}
+          disabled={!stats || stats.labeled === 0}
+          className="btn btn-primary"
+          style={{ opacity: !stats || stats.labeled === 0 ? 0.5 : 1 }}
+        >
+          <Play size={14} /> Review dataset
         </button>
       </TopBar>
 
@@ -96,103 +151,165 @@ export default function TrainingPage() {
         </div>
       )}
 
-      {job && (
-        <div
-          className="card p-4 mb-4 flex items-center gap-3 animate-in"
-          style={{ borderColor: job.status === 'done' ? 'var(--success)' : job.status === 'failed' ? 'var(--danger)' : 'var(--accent)' }}
-        >
-          {job.status === 'running'
-            ? <Brain size={16} className="pulse-soft" style={{ color: 'var(--accent)' }} />
-            : job.status === 'done'
-            ? <CheckCircle size={16} style={{ color: 'var(--success-text)' }} />
-            : <AlertTriangle size={16} style={{ color: 'var(--danger)' }} />}
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {job.status === 'running' ? 'Training in progress...' : job.status === 'done' ? 'Training complete' : 'Training failed'}
+      <div className="grid grid-cols-12 gap-4">
+
+        {/* Camera + controls */}
+        <div className="col-span-12 card overflow-hidden animate-in">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px 8px' }}>
+            <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-muted)' }}>Live camera</span>
+            {recording && eventId !== null && (
+              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>event #{eventId}</span>
+            )}
+          </div>
+
+          {frameSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={frameSrc}
+              alt="Live camera"
+              className="w-full block"
+              style={{ maxHeight: 340, objectFit: 'contain', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
+              onError={() => {}}
+            />
+          ) : (
+            <div className="flex items-center justify-center py-16 text-sm" style={{ color: 'var(--text-muted)' }}>Starting camera...</div>
+          )}
+
+          <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border-subtle)' }}>
+
+            {/* Level readout */}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 24, fontWeight: 500, color: activeLevel.color, transition: 'color 0.1s' }}>{dangerLevel}</span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: activeLevel.color, transition: 'color 0.1s' }}>{activeLevel.name}</span>
+              {!recording && (
+                <span className="text-xs" style={{ color: 'var(--text-muted)', marginLeft: 4 }}>— start recording to capture</span>
+              )}
             </div>
-            <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
-              Job {job.job_id}{job.error ? ` · ${job.error}` : ''}
+
+            {/* Heat strip */}
+            <div
+              ref={stripRef}
+              style={{ display: 'flex', gap: 5, marginBottom: 10, cursor: 'pointer', userSelect: 'none' }}
+              onMouseDown={e => { dragging.current = true; pickLevel(levelFromX(e.clientX)); }}
+              onTouchStart={e => { dragging.current = true; pickLevel(levelFromX(e.touches[0].clientX)); }}
+            >
+              {LEVELS.map(l => {
+                const active = l.n === dangerLevel;
+                return (
+                  <div key={l.n} style={{
+                    flex: 1, height: 52, borderRadius: 8,
+                    border: `1.5px solid ${active ? l.color : 'var(--border-subtle)'}`,
+                    background: active ? l.color + '28' : 'var(--bg-elevated)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                    transform: active ? 'scaleY(1.06)' : 'scaleY(1)',
+                    transition: 'all 0.1s',
+                  }}>
+                    <span style={{ fontSize: 18, fontWeight: 500, color: l.color, lineHeight: 1 }}>{l.n}</span>
+                    <span style={{ fontSize: 9, color: active ? l.color : 'var(--text-muted)', lineHeight: 1 }}>{l.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Two buttons: flip + record */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setFlipped(f => !f)}
+                className="btn btn-ghost"
+                style={{ flex: '0 0 auto' }}
+              >
+                <FlipVertical size={14} />
+                {flipped ? 'Unflip' : 'Flip'}
+              </button>
+              <button
+                onClick={handleRecordToggle}
+                disabled={recLoading}
+                className="btn"
+                style={{
+                  flex: 1,
+                  justifyContent: 'center',
+                  gap: 8,
+                  background: recording ? 'var(--danger-soft)' : 'var(--bg-elevated)',
+                  borderColor: recording ? 'var(--danger)' : 'var(--border)',
+                  color: recording ? 'var(--danger)' : 'var(--text-primary)',
+                  opacity: recLoading ? 0.6 : 1,
+                }}
+              >
+                {recording
+                  ? <><Square size={13} fill="currentColor" /> Stop recording</>
+                  : <><Circle size={13} fill="#E24B4A" color="#E24B4A" /> Start recording</>}
+              </button>
             </div>
           </div>
-          {job.result && (
-            <span className="text-[11px] px-3 py-1 rounded-full flex-shrink-0" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', fontFamily: "'JetBrains Mono', monospace" }}>
-              {JSON.stringify(job.result).slice(0, 80)}
-            </span>
+        </div>
+
+        {/* Dataset overview */}
+        <div className="col-span-8 card p-6 animate-in">
+          <div className="text-[10px] uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>Dataset overview</div>
+          {statsLoading ? (
+            <div className="text-sm pulse-soft" style={{ color: 'var(--text-muted)' }}>Loading...</div>
+          ) : stats ? (
+            <>
+              <div className="grid grid-cols-3 gap-4 mb-5">
+                {[
+                  { label: 'Total',     value: stats.total,    color: 'var(--text-primary)' },
+                  { label: 'Labeled',   value: stats.labeled,  color: '#639922' },
+                  { label: 'Unlabeled', value: stats.unlabeled, color: '#BA7517' },
+                ].map(item => (
+                  <div key={item.label} className="text-center p-4 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
+                    <div className="text-3xl font-bold" style={{ color: item.color }}>{item.value}</div>
+                    <div className="text-[11px] mt-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{item.label}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between text-[11px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                <span>Labeling progress</span><span>{labeledPct}%</span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                <div className="h-full rounded-full transition-all" style={{
+                  width: `${labeledPct}%`,
+                  background: labeledPct >= 80 ? '#639922' : labeledPct >= 40 ? 'var(--accent)' : '#BA7517',
+                }} />
+              </div>
+              {stats.labeled === 0 && (
+                <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
+                  Record a session to capture labeled data. You need at least 20 labeled rows to train.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Could not load stats.</p>
           )}
         </div>
-      )}
 
-      {loading ? (
-        <div className="text-center py-16 pulse-soft" style={{ color: 'var(--text-muted)' }}>Loading stats...</div>
-      ) : stats ? (
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-12 card overflow-hidden animate-in" style={{ minHeight: 300 }}>
-            <div className="text-[10px] uppercase tracking-wider font-semibold p-4 pb-2" style={{ color: 'var(--text-muted)' }}>Live camera</div>
-            {frameSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={frameSrc} alt="Live camera" className="w-full block" style={{ maxHeight: 360, objectFit: 'contain', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }} onError={() => {}} />
-            ) : (
-              <div className="flex items-center justify-center py-16" style={{ color: 'var(--text-muted)' }}>Starting camera...</div>
-            )}
-          </div>
-
-          <div className="col-span-8 card p-6 animate-in">
-            <div className="text-[10px] uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>Dataset overview</div>
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              {[
-                { label: 'Total', value: stats.total, color: 'var(--text-primary)' },
-                { label: 'Labeled', value: stats.labeled, color: 'var(--success-text)' },
-                { label: 'Unlabeled', value: stats.unlabeled, color: 'var(--warning)' },
-              ].map(item => (
-                <div key={item.label} className="text-center p-4 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
-                  <div className="text-3xl font-bold" style={{ color: item.color }}>{item.value}</div>
-                  <div className="text-[11px] mt-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{item.label}</div>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-between text-[11px] mb-2" style={{ color: 'var(--text-muted)' }}>
-              <span>Labeling progress</span><span>{labeledPct}%</span>
-            </div>
-            <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
-              <div className="h-full rounded-full transition-all" style={{ width: `${labeledPct}%`, background: labeledPct >= 80 ? 'var(--success-text)' : labeledPct >= 40 ? 'var(--accent)' : 'var(--warning)' }} />
-            </div>
-            {stats.labeled === 0 && (
-              <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-                Label predictions on the Predictions tab before training. The backend needs at least 20 rows to train.
-              </p>
-            )}
-          </div>
-
-          <div className="col-span-4 card p-6 animate-in" style={{ animationDelay: '100ms' }}>
-            <div className="text-[10px] uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>Class distribution</div>
-            {stats.class_distribution.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No labeled data yet</p>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {stats.class_distribution.map(({ true_danger_level: lvl, count }) => {
-                  const maxCount = Math.max(...stats.class_distribution.map(d => d.count));
-                  const pct = (count / (maxCount || 1)) * 100;
-                  return (
-                    <div key={lvl}>
-                      <div className="flex justify-between text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
-                        <span>Level {lvl}</span><span>{count}</span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full" style={{ background: 'var(--bg-elevated)' }}>
-                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: DANGER_COLORS[lvl] ?? 'var(--accent)' }} />
-                      </div>
+        {/* Class distribution */}
+        <div className="col-span-4 card p-6 animate-in" style={{ animationDelay: '80ms' }}>
+          <div className="text-[10px] uppercase tracking-wider font-semibold mb-4" style={{ color: 'var(--text-muted)' }}>Class distribution</div>
+          {statsLoading ? (
+            <div className="text-sm pulse-soft" style={{ color: 'var(--text-muted)' }}>Loading...</div>
+          ) : stats?.class_distribution.length ? (
+            <div className="flex flex-col gap-2.5">
+              {stats.class_distribution.map(({ true_danger_level: lvl, count }) => {
+                const maxCount = Math.max(...stats.class_distribution.map(d => d.count));
+                const pct = (count / (maxCount || 1)) * 100;
+                return (
+                  <div key={lvl}>
+                    <div className="flex justify-between text-[11px] mb-1" style={{ color: 'var(--text-muted)' }}>
+                      <span>Level {lvl}</span><span>{count}</span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    <div className="w-full h-1.5 rounded-full" style={{ background: 'var(--bg-elevated)' }}>
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: DIST_COLORS[lvl] ?? 'var(--accent)' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No labeled data yet.</p>
+          )}
         </div>
-      ) : (
-        <div className="card p-12 text-center">
-          <Brain size={36} className="mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Could not load training stats</p>
-        </div>
-      )}
+
+      </div>
     </div>
   );
 }

@@ -13,6 +13,8 @@
     "@react-three/fiber": "^9.6.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
+    "ag-grid-community": "^32.3.9",
+    "ag-grid-react": "^32.3.9",
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

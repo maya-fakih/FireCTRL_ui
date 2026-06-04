@@ -126,3 +126,32 @@ export const getCameraSnapshotUrl = () => `${API_BASE}/api/camera/snapshot`;
 // ── Health ────────────────────────────────────────────────────────────
 export const healthCheck = () =>
   request<{ status: string }>('/api/health');
+
+// ── Training recording ─────────────────────────────────────────────────────
+export const recordingStart = (same_event = true) =>
+  request<{ ok: boolean; event_id: number; recording: boolean }>(
+    '/api/training/record/start',
+    { method: 'POST', body: JSON.stringify({ same_event }) },
+  );
+
+export const recordingStop = () =>
+  request<{ ok: boolean; recording: boolean }>(
+    '/api/training/record/stop',
+    { method: 'POST' },
+  );
+
+export const recordingPushLabel = (true_danger_level: number, true_action?: string) =>
+  request<{ ok: boolean; true_danger_level: number }>(
+    '/api/training/record/label',
+    { method: 'POST', body: JSON.stringify({ true_danger_level, true_action }) },
+  );
+
+// ── Dataset merge ──────────────────────────────────────────────────────────
+export const getDatasetColumns = () =>
+  request<{ columns: string[] }>('/api/training/dataset/columns');
+
+export const mergeDataset = (rows: Record<string, unknown>[]) =>
+  request<{ ok: boolean; inserted: number; skipped: number; errors: string[] }>(
+    '/api/training/dataset/merge',
+    { method: 'POST', body: JSON.stringify({ rows }) },
+  );
