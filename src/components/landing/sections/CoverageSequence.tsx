@@ -263,7 +263,7 @@ function TypewriterAct({
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: clip.accent ? 'var(--accent)' : 'var(--text-muted)' }}
           />
-          <span className="font-mono-tag" style={{ color: 'var(--text-secondary)' }}>
+          <span className="font-mono-tag" style={{ color: '#A59E97' }}>
             {clip.tag}
           </span>
         </div>
@@ -271,8 +271,7 @@ function TypewriterAct({
         {/* typewriter line */}
         <p
           className="font-display text-3xl leading-[1.08] sm:text-5xl lg:text-6xl"
-          style={{ color: 'var(--text-primary)', letterSpacing: '-0.02em', minHeight: '1.1em' }}
-        >
+          style={{ color: '#EDE8E2', letterSpacing: '-0.02em', minHeight: '1.1em' }}>
           <span ref={lineRef} />
           {/* blinking cursor */}
           <span
@@ -280,7 +279,7 @@ function TypewriterAct({
             className="inline-block w-[3px] ml-[2px] rounded-sm align-middle animate-pulse"
             style={{
               height: '0.85em',
-              background: clip.accent ? 'var(--accent)' : 'var(--text-primary)',
+              background: clip.accent ? 'var(--accent)' : '#EDE8E2',
               verticalAlign: 'middle',
               opacity: index === 0 ? 1 : 0,
             }}
