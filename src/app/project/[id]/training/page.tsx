@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
   getTrainingStats, triggerTraining, getTrainStatus,
-  getCameraFeedUrl,
+  getCameraFeedUrl, getState, setMode, toggleCamera,
   recordingStart, recordingStop, recordingPushLabel,
 } from '@/lib/api';
 import type { TrainingStats, TrainJob } from '@/lib/types';
@@ -31,6 +31,10 @@ export default function TrainingPage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [flipped, setFlipped]     = useState(false);
+  // Whether the Pi camera is actually on. We only mount the <img> feed when
+  // this is true, so visiting Training never opens a stream / flips the global
+  // camera flag behind the user's back (that was coupling Training ↔ Camera).
+  const [camActive, setCamActive] = useState(false);
 
   // Recording
   const [recording, setRecording]     = useState(false);
@@ -54,9 +58,10 @@ export default function TrainingPage() {
     }
   }, []);
 
-  // ── Camera (continuous poll) ────────────────────────────────────────
+  // ── Initial load: stats + current camera state ─────────────────────
   useEffect(() => {
     loadStats();
+    getState().then(s => setCamActive(s.camera_feed_active)).catch(() => {});
   }, [loadStats]);
 
   // ── Heat strip drag ─────────────────────────────────────────────────
@@ -103,6 +108,14 @@ export default function TrainingPage() {
         setEventId(null);
         await loadStats();
       } else {
+        // THINK only consumes the recording stream while system_mode is
+        // 'training', and SEE only feeds see_queue while the camera is on.
+        // Set both before starting, or the recording silently saves nothing.
+        await setMode('training');
+        if (!camActive) {
+          await toggleCamera(true);
+          setCamActive(true);
+        }
         const res = await recordingStart(true);
         setEventId(res.event_id);
         setRecording(true);
@@ -149,13 +162,24 @@ export default function TrainingPage() {
             )}
           </div>
 
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={getCameraFeedUrl()}
-            alt="Live camera"
-            className="w-full block"
-            style={{ height: 340, objectFit: 'cover', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
-          />
+          {/* Only open the MJPEG stream when the camera is actually on.
+              Otherwise show a placeholder — no hidden stream, no global flag flip. */}
+          {camActive ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={getCameraFeedUrl()}
+              alt="Live camera"
+              className="w-full block"
+              style={{ height: 340, objectFit: 'cover', background: 'var(--bg-elevated)', transform: flipped ? 'scaleY(-1)' : 'none', transition: 'transform 0.2s ease' }}
+            />
+          ) : (
+            <div
+              className="w-full flex items-center justify-center text-xs"
+              style={{ height: 340, background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            >
+              Camera is off — press Start recording to turn it on
+            </div>
+          )}
 
           <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border-subtle)' }}>
 
