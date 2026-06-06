@@ -19,6 +19,7 @@ export interface SystemState {
   camera_feed_active: boolean;
   prediction_id: number | null;
   copilot_decision: string | null;
+  latest_heat_matrix: number[][] | null;
 }
 
 export type Severity = 'info' | 'warn' | 'critical';
