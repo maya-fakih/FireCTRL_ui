@@ -22,24 +22,30 @@ function tempToColor(val: number, min: number, max: number): string {
   }
 }
 
-function HeatMatrix({ matrix }: { matrix: number[][] }) {
+function HeatMatrix({ matrix, flipped }: { matrix: number[][], flipped: boolean }) {
   if (!matrix || matrix.length === 0) return null;
 
-  const rows = matrix.length;
-  const cols = matrix[0].length;
+  // Flip rows when flipped=true (ceiling-mounted sensor: row 0 is physical bottom).
+  // This must match heat_flip_y in config.json so the display matches arm tracking.
+  const displayMatrix = flipped ? [...matrix].reverse() : matrix;
+
+  const rows = displayMatrix.length;
+  const cols = displayMatrix[0].length;
 
   // find min/max for color scale
   let min = Infinity, max = -Infinity;
   let hotRow = 0, hotCol = 0;
-  matrix.forEach((row, r) => row.forEach((val, c) => {
+  displayMatrix.forEach((row, r) => row.forEach((val, c) => {
     if (val < min) min = val;
     if (val > max) { max = val; hotRow = r; hotCol = c; }
   }));
 
-  // compute err_x, err_y exactly as arm_controller does
+  // compute err_x, err_y exactly as arm_controller does (after flip)
   const cx = (cols - 1) / 2.0;
   const cy = (rows - 1) / 2.0;
   const errX = cx > 0 ? (hotCol - cx) / cx : 0;
+  // errY: positive = hotspot is in lower half of display = fire is below center
+  // After flip, row 0 is physical top, so this matches physical reality
   const errY = cy > 0 ? (hotRow - cy) / cy : 0;
 
   const cellSize = 36;
@@ -50,7 +56,7 @@ function HeatMatrix({ matrix }: { matrix: number[][] }) {
     <div>
       {/* grid */}
       <div style={{ position: 'relative', width: W, height: H, margin: '0 auto' }}>
-        {matrix.map((row, r) =>
+        {displayMatrix.map((row, r) =>
           row.map((val, c) => {
             const isHot = r === hotRow && c === hotCol;
             return (
@@ -122,7 +128,7 @@ function HeatMatrix({ matrix }: { matrix: number[][] }) {
             {errY > 0 ? '+' : ''}{errY.toFixed(3)}
           </div>
           <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            {Math.abs(errY) < 0.15 ? '✓ centered' : errY > 0 ? '↓ fire bottom' : '↑ fire top'}
+            {Math.abs(errY) < 0.15 ? '✓ centered' : errY > 0 ? '↓ fire below' : '↑ fire above'}
           </div>
         </div>
       </div>
@@ -141,7 +147,7 @@ export default function CameraPage() {
   const [loading, setLoading]         = useState(true);
   const [toggling, setToggling]       = useState(false);
   const [error, setError]             = useState<string | null>(null);
-  const [flipped, setFlipped]         = useState(false);
+  const [flipped, setFlipped]         = useState(true);  // ceiling-mounted: both cam + grid start flipped
   const [warmingUp, setWarmingUp]     = useState(false);
   const [heatMatrix, setHeatMatrix]   = useState<number[][] | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -200,9 +206,9 @@ export default function CameraPage() {
   return (
     <div>
       <TopBar title="Camera feed" subtitle="Live feed from the Pi camera">
-        <button onClick={() => setFlipped(f => !f)} disabled={!active || warmingUp}
-          className="btn btn-ghost" style={{ opacity: (!active || warmingUp) ? 0.5 : 1 }} title="Flip image vertically">
-          <FlipVertical size={14} />{flipped ? 'Unflip' : 'Flip vertical'}
+        <button onClick={() => setFlipped(f => !f)}
+          className="btn btn-ghost" title="Flip camera + heat grid vertically">
+          <FlipVertical size={14} />{flipped ? 'Unflip' : 'Flip'}
         </button>
         <button onClick={handleToggle} disabled={toggling || loading} className="btn btn-ghost"
           style={active ? { color: 'var(--danger)', borderColor: 'var(--danger)' } : {}}>
@@ -274,7 +280,7 @@ export default function CameraPage() {
             <div className="text-xs font-semibold uppercase mb-3" style={{ color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
               Heat Grid · 8×8 · live
             </div>
-            <HeatMatrix matrix={heatMatrix} />
+            <HeatMatrix matrix={heatMatrix} flipped={flipped} />
           </div>
         )}
       </div>
